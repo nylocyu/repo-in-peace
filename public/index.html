@@ -187,7 +187,13 @@ function drawGrave(g, t) {
     tombs[g.tomb](x, y - 8, col);
     r(x - 7, y - 4, 14, 7, '#0d0806'); r(x - 6, y - 5, 12, 1, '#2a1a10');
     r(x - 11, y - 2, 4, 3, '#5a3d22'); r(x + 8, y - 2, 4, 3, '#5a3d22');
-    r(x + 12, y + 6, 2, 1, '#3d4f2c'); r(x + 17, y + 9, 2, 1, '#3d4f2c'); r(x + 22, y + 7, 2, 1, '#3d4f2c');
+    r(x + 10, y + 6, 2, 1, '#3d4f2c'); r(x + 13, y + 8, 2, 1, '#3d4f2c');
+    // The risen repo itself: shambling right, arms out, swaying
+    const zx = x + 16, zy = y + 6, sw = Math.sin(t / 350 + x) > 0 ? 1 : 0, skin = '#8fbf6a';
+    r(zx - 2, zy - 4, 1, 4, '#3b2f4a'); r(zx + 1, zy - 4 + sw, 1, 4 - sw, '#3b2f4a'); // legs, one dragging
+    r(zx - 2, zy - 10, 4, 6, '#556b3a'); r(zx - 1, zy - 6, 1, 1, '#2b3a1c');           // torn shirt
+    r(zx - 2 + sw, zy - 14, 4, 4, skin); r(zx + sw, zy - 13, 1, 1, '#ff3b3b'); r(zx + 1 + sw, zy - 12, 1, 1, '#2b3a1c'); // head, red eye
+    r(zx + 2, zy - 10 + sw, 4, 1, skin); r(zx + 2, zy - 8, 4, 1, skin);               // arms reaching forward
   } else {
     tombs[g.tomb](x, y, col);
     if (g.tomb !== 'mausoleum') r(x - 7, y + 1, 14, 2, '#2a1f17');
