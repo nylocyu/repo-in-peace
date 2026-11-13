@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repo in Peace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #2b2118; --paper: #efe6cf; --night: #0b1210; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--night); color: #e8e6f0; font: 20px/1.1 VT323, monospace; }
+  canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; touch-action: none; }
+  .px { font-family: "Press Start 2P", monospace; }
+  button, .btn { font: 18px VT323, monospace; background: var(--paper); color: var(--ink); border: 3px solid var(--ink); box-shadow: 3px 3px 0 #000; padding: 4px 10px; cursor: pointer; text-decoration: none; display: inline-block; }
+  button:active, .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #000; }
+  button.danger { background: #c9584b; color: #fff; }
+  header { position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 12px; align-items: center; padding: 10px 14px; background: linear-gradient(#000c, #0000); flex-wrap: wrap; }
+  header h1 { margin: 0 auto 0 0; font-size: 14px; color: #d9d3c0; text-shadow: 2px 2px 0 #000; }
+  header a { color: #d9d3c0; }
+  #hint { position: fixed; left: 14px; bottom: 10px; color: #a9b3a6; text-shadow: 1px 1px 0 #000; }
+  #log { position: fixed; left: 14px; bottom: 36px; width: min(420px, 60vw); display: flex; flex-direction: column; gap: 2px; pointer-events: none; text-shadow: 1px 1px 0 #000; }
+  #log div { animation: fade 12s forwards; }
+  #log b { color: #f1d27a; font-weight: normal; }
+  @keyframes fade { 80% { opacity: 1 } 100% { opacity: 0 } }
+  #chat { position: fixed; left: 14px; bottom: 36px; }
+  #chat input { font: 20px VT323, monospace; width: min(420px, 80vw); padding: 6px; background: var(--paper); color: var(--ink); border: 3px solid var(--ink); }
+  #banner { position: fixed; top: 56px; left: 14px; max-width: min(420px, calc(100vw - 28px)); background: #000a; border: 2px solid #f1d27a; color: #f1d27a; padding: 6px 12px; font-size: 22px; }
+  #cert { position: fixed; right: 14px; top: 64px; width: 320px; max-height: calc(100vh - 84px); overflow: auto; background: var(--paper); color: var(--ink); border: 4px solid var(--ink); box-shadow: 6px 6px 0 #000; padding: 12px 14px; }
+  #cert h2 { font-size: 11px; margin: 0 0 8px; letter-spacing: 1px; }
+  #cert h3 { margin: 0 0 6px; font-size: 24px; font-weight: normal; word-break: break-all; }
+  #cert a { color: var(--ink); }
+  #cert .epitaph { font-style: italic; margin: 6px 0 10px; font-size: 21px; }
+  #cert dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+  #cert dt { opacity: .65; }
+  #cert dd { margin: 0; word-break: break-word; }
+  #cert .note { background: #2b211815; padding: 6px; margin: 10px 0 0; }
+  #cert .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  dialog { background: var(--paper); color: var(--ink); border: 4px solid var(--ink); box-shadow: 8px 8px 0 #000; max-width: 440px; width: calc(100vw - 32px); padding: 16px; }
+  dialog::backdrop { background: #000a; }
+  dialog h2 { font-size: 12px; margin: 0 0 10px; }
+  dialog label { display: block; margin: 10px 0; }
+  dialog input, dialog select { display: block; width: 100%; font: 20px VT323, monospace; padding: 6px; margin-top: 4px; border: 3px solid var(--ink); background: #fff8e6; color: var(--ink); }
+  dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 14px 0 0; }
+  #buryWhere { background: #2b211815; padding: 6px; }
+  #buryMsg { min-height: 1.2em; margin: 6px 0 0; }
+  #toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%); background: #000c; border: 2px solid #d9d3c0; padding: 6px 12px; font-size: 22px; }
+  @media (max-width: 700px) {
+    #cert { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 48vh; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Pixel cemetery of buried repos"></canvas>
+<header>
+  <h1 class="px">🪦 Repo in Peace</h1>
+  <span id="me"></span>
+  <button id="buryBtn">⚰️ Bury a repo</button>
+</header>
+<div id="banner" hidden></div>
+<aside id="cert" hidden aria-live="polite"></aside>
+<div id="log" aria-live="polite"></div>
+<form id="chat" hidden><input maxlength="140" placeholder="Say something… (Enter to send, Esc to cancel)" aria-label="Chat message"></form>
+<div id="hint">WASD/arrows or tap: walk · Enter: speak · B: bury · F: pay respects · 1: flower · 2: candle</div>
+<div id="toast" hidden role="status"></div>
+<dialog id="bury">
+  <form id="buryForm">
+    <h2 class="px">Bury a repo</h2>
+    <p>Only your own public repos. Anything with a commit in the last <span id="deadAfter">90</span> days goes to hospice first.</p>
+    <p id="buryWhere"></p>
+    <label>Repo <select name="repo" required></select></label>
+    <label>Cause of death <select name="cause"><option value="">🎲 Let fate (AI) decide</option></select></label>
+    <p id="buryMsg" role="status"></p>
+    <menu><button type="button" id="buryCancel">Cancel</button><button id="burySubmit">Bury</button></menu>
+  </form>
+</dialog>
+<script>
+const $ = s => document.querySelector(s);
+const cv = $('#c'), ctx = cv.getContext('2d');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const post = (url, data, method = 'POST') => fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data || {}) })
+  .then(async r => ({ ok: r.ok, data: r.status === 204 ? null : await r.json().catch(() => null) }));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+let me = {}, you = null, graves = [], plots = [], rows = 4, active = null, pendingTeleport = null, spawned = false, buryPlot = null;
+const P = { x: 0, y: 0, dir: 'down', moving: false };
+const others = new Map(), bubbles = new Map(), fx = [], keys = new Set();
+let target = null, W = 800, H = 400, ground = null, flies = [];
+
+// ---------- Colors ----------
+const LANG = { JavaScript: '#f1e05a', TypeScript: '#3178c6', Python: '#3572a5', Rust: '#dea584', Go: '#00add8', Java: '#b07219', HTML: '#e34c26', CSS: '#563d7c', Ruby: '#701516', PHP: '#4f5d95', 'C#': '#178600', 'C++': '#f34b7d', C: '#555555', Swift: '#f05138', Kotlin: '#a97bff', Shell: '#89e051', Vue: '#41b883', Svelte: '#ff3e00', Dart: '#00b4ab', 'Jupyter Notebook': '#da5b0b' };
+const lc = l => LANG[l] || '#9aa0a6';
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, t) => '#' + hex(a).map((v, i) => Math.round(v + (hex(b)[i] - v) * t).toString(16).padStart(2, '0')).join('');
+let pen = ctx;
+const r = (x, y, w, h, c) => { pen.fillStyle = c; pen.fillRect(Math.round(x), Math.round(y), w, h); };
+
+// ---------- Layout: one cemetery, a grid of plots ----------
+const COLS = 12, GX = 44, GY = 50, TOP = 90, PADX = 34;
+const SIGN = 'Walk to an empty plot to bury a repo';
+const plotPos = i => ({ x: PADX + (i % COLS) * GX + GX / 2, y: TOP + 40 + Math.floor(i / COLS) * GY });
+
+function layout() {
+  for (const g of graves) Object.assign(g, plotPos(g.plot));
+  const taken = new Set(graves.map(g => g.plot));
+  plots = [];
+  for (let i = 0; i < rows * COLS; i++) if (!taken.has(i)) plots.push({ plot: i, empty: true, ...plotPos(i) });
+  const nw = PADX * 2 + COLS * GX, nh = TOP + 40 + (rows - 1) * GY + 34;
+  if (nw !== W || nh !== H || !ground) {
+    W = nw; H = nh; ground = paintGround();
+    flies = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: TOP + Math.random() * (H - TOP), p: Math.random() * 9 }));
+  }
+}
+
+function paintGround() {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  pen = c.getContext('2d');
+  let seed = 42; const rand = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  r(0, 0, W, H, '#1d3527');
+  for (let i = 0; i < W * H / 30; i++) r(rand() * W, rand() * H, 1, 1, ['#244233', '#172c20', '#2b4d3a'][i % 3]);
+  r(PADX - 6, TOP + 8, W - PADX * 2 + 12, H - TOP - 14, 'rgba(0,0,0,.13)'); // the burial ground
+  // Paths
+  r(0, 54, W, 14, '#43382f'); r(W / 2 - 8, 0, 16, 60, '#43382f');
+  for (let i = 0; i < W / 3; i++) r(rand() * W, 54 + rand() * 14, 1, 1, '#54473b');
+  // Bare trees
+  for (let x = 20; x < W - 20; x += 26 + (rand() * 22 | 0)) {
+    if (Math.abs(x - W / 2) < 56) continue;
+    const T = '#2b211a', y = 50;
+    r(x, y - 18, 2, 18, T); r(x - 4, y - 14, 4, 1, T); r(x - 4, y - 17, 1, 3, T); r(x + 2, y - 11, 5, 1, T);
+    r(x + 6, y - 14, 1, 3, T); r(x - 2, y - 21, 1, 4, T); r(x + 1, y - 23, 1, 5, T);
+  }
+  // Fence + gate
+  for (let x = 0; x < W; x += 4) if (Math.abs(x - W / 2) > 46) { r(x, 6, 1, 12, '#0c0c0c'); r(x, 5, 1, 1, '#5a5a66'); }
+  r(0, 9, W / 2 - 46, 1, '#0c0c0c'); r(W / 2 + 46, 9, W, 1, '#0c0c0c'); r(0, 15, W / 2 - 46, 1, '#0c0c0c'); r(W / 2 + 46, 15, W, 1, '#0c0c0c');
+  r(0, 6, 3, H, '#0c0c0c'); r(W - 3, 6, 3, H, '#0c0c0c'); r(0, H - 3, W, 3, '#0c0c0c');
+  r(W / 2 - 48, 0, 5, 24, '#4b4b55'); r(W / 2 + 43, 0, 5, 24, '#4b4b55'); r(W / 2 - 50, 0, 100, 9, '#3a3a44'); r(W / 2 - 50, 9, 100, 1, '#1a1a20');
+  // Signpost
+  const sw = SIGN.length * 4 + 10;
+  r(W / 2 - 1, 80, 2, 8, '#3b2716'); r(W / 2 - sw / 2, 72, sw, 10, '#6b4a2b'); r(W / 2 - sw / 2, 82, sw, 1, '#3b2716');
+  pen = ctx;
+  return c;
+}
+
+// ---------- Sprites ----------
+const tombs = {
+  cross(x, y, col) {
+    r(x - 1, y - 17, 3, 17, '#6e4426'); r(x - 6, y - 13, 13, 3, '#6e4426');
+    r(x - 1, y - 17, 1, 17, '#8a5a34'); r(x - 6, y - 13, 13, 1, '#8a5a34'); r(x - 1, y - 9, 3, 2, col);
+  },
+  stone(x, y, col) {
+    const s = mix('#8b8f98', col, .3), d = mix(s, '#000000', .35), l = mix(s, '#ffffff', .25);
+    r(x - 6, y - 13, 13, 13, s); r(x - 5, y - 14, 11, 1, s); r(x - 4, y - 15, 9, 1, l);
+    r(x - 6, y - 13, 1, 13, l); r(x + 6, y - 13, 1, 13, d);
+    r(x - 3, y - 10, 7, 1, d); r(x - 3, y - 7, 7, 1, d); r(x - 2, y - 4, 5, 1, d); r(x - 7, y - 1, 15, 2, '#4a4d55');
+  },
+  marble(x, y, col) {
+    const s = mix('#e6e4ee', col, .12), d = mix(s, '#000000', .3);
+    r(x - 8, y - 19, 17, 18, s); r(x - 6, y - 21, 13, 2, s); r(x - 3, y - 23, 7, 2, s); r(x + 8, y - 19, 1, 18, d);
+    r(x, y - 19, 1, 7, d); r(x - 2, y - 17, 5, 1, d); r(x - 5, y - 9, 11, 1, d); r(x - 4, y - 6, 9, 1, d);
+    r(x - 8, y - 4, 17, 2, col); r(x - 10, y - 1, 21, 3, mix(s, '#000000', .45));
+  },
+  mausoleum(x, y, col) {
+    const s = mix('#b9b3a3', col, .18), d = mix(s, '#000000', .35), l = mix(s, '#ffffff', .3);
+    r(x - 16, y - 2, 32, 3, d); r(x - 14, y - 4, 28, 2, s); r(x - 13, y - 22, 26, 18, s);
+    r(x - 12, y - 21, 2, 17, l); r(x + 10, y - 21, 2, 17, l); r(x - 8, y - 21, 2, 17, l); r(x + 6, y - 21, 2, 17, l);
+    r(x - 4, y - 15, 8, 11, '#141018'); r(x - 4, y - 16, 8, 1, d); r(x - 13, y - 22, 26, 1, col);
+    for (let i = 0; i < 7; i++) r(x - 15 + i * 2, y - 23 - i, 30 - i * 4, 1, d);
+    r(x - 1, y - 32, 2, 3, col);
+  },
+};
+function bed(x, y, col) {
+  r(x - 9, y - 6, 18, 4, '#d8d4cc'); r(x - 9, y - 2, 2, 3, '#8a8378'); r(x + 7, y - 2, 2, 3, '#8a8378'); r(x - 9, y - 11, 2, 9, '#8a8378');
+  r(x - 7, y - 8, 4, 2, '#ffffff'); r(x - 3, y - 8, 10, 3, col); r(x - 3, y - 8, 10, 1, mix(col, '#ffffff', .3));
+  r(x + 12, y - 15, 1, 15, '#9aa0a6'); r(x + 11, y - 15, 3, 3, '#9fd3ff'); r(x + 10, y, 5, 1, '#9aa0a6');
+}
+function emptyPlot(p) {
+  const { x, y } = p, hi = p === active, peg = hi ? '#ffe9a8' : '#5c4c3a';
+  r(x - 8, y - 5, 16, 7, hi ? 'rgba(90,60,30,.55)' : 'rgba(40,28,16,.4)');
+  r(x - 9, y - 6, 1, 2, peg); r(x + 8, y - 6, 1, 2, peg); r(x - 9, y + 2, 1, 2, peg); r(x + 8, y + 2, 1, 2, peg);
+}
+const FLOWERS = ['#f48fb1', '#ffe082', '#ffffff', '#ce93d8'];
+function drawGrave(g, t) {
+  const { x, y } = g, col = lc(g.language);
+  if (g.status === 'hospice') bed(x, y, col);
+  else if (g.status === 'zombie') {
+    tombs[g.tomb](x, y - 8, col);
+    r(x - 7, y - 4, 14, 7, '#0d0806'); r(x - 6, y - 5, 12, 1, '#2a1a10');
+    r(x - 11, y - 2, 4, 3, '#5a3d22'); r(x + 8, y - 2, 4, 3, '#5a3d22');
+    r(x + 12, y + 6, 2, 1, '#3d4f2c'); r(x + 17, y + 9, 2, 1, '#3d4f2c'); r(x + 22, y + 7, 2, 1, '#3d4f2c');
+  } else {
+    tombs[g.tomb](x, y, col);
+    if (g.tomb !== 'mausoleum') r(x - 7, y + 1, 14, 2, '#2a1f17');
+  }
+  for (let i = 0; i < Math.min(g.flowers, 4); i++) {
+    const fx0 = x - 9 + i * 3, c = FLOWERS[i % 4];
+    r(fx0, y + 4, 1, 2, '#3f7a3a'); r(fx0 - 1, y + 3, 3, 1, c); r(fx0, y + 2, 1, 1, c);
+  }
+  for (let i = 0; i < Math.min(g.candles, 3); i++) {
+    const cx = x + 4 + i * 3;
+    r(cx, y + 3, 1, 3, '#e8e2d0'); r(cx, y + 2, 1, 1, ((t / 130 + i * 3) | 0) % 3 ? '#ffd23f' : '#ff8a00');
+  }
+}
+function drawPlayer(p, t) {
+  const x = Math.round(p.x), y = Math.round(p.y), f = p.moving ? Math.floor(t / 140) % 2 : 0;
+  r(x - 4, y - 1, 9, 2, 'rgba(0,0,0,.35)');
+  const ex = p.dir === 'left' ? -1 : p.dir === 'right' ? 1 : 0;
+  if (p.guest) { // guests haunt the place as ghosts
+    const b = Math.round(Math.sin(t / 300 + x)), c = 'rgba(225,232,255,.82)';
+    r(x - 4, y - 15 + b, 9, 10, c); r(x - 3, y - 16 + b, 7, 1, c);
+    for (let i = 0; i < 3; i++) r(x - 4 + i * 3 + f, y - 5 + b, 2, 2, c);
+    if (p.dir !== 'up') { r(x - 2 + ex, y - 12 + b, 1, 2, '#1a1a2e'); r(x + 2 + ex, y - 12 + b, 1, 2, '#1a1a2e'); }
+    return;
+  }
+  const skin = '#f0c8a0', hair = '#2a1d14';
+  r(x - 3, y - 4 - f, 2, 4, '#1a1a22'); r(x + 1, y - 4 - (1 - f) * (p.moving ? 1 : 0), 2, 4, '#1a1a22');
+  r(x - 3, y - 9, 7, 5, p.color); r(x - 4, y - 8, 1, 3, p.color); r(x + 4, y - 8, 1, 3, p.color); r(x, y - 9, 1, 3, '#eee');
+  r(x - 3, y - 14, 7, 5, skin); r(x - 3, y - 14, 7, 1, hair);
+  if (p.dir === 'up') r(x - 3, y - 14, 7, 4, hair);
+  else { r(x - 2 + ex, y - 12, 1, 1, '#111'); r(x + 2 + ex, y - 12, 1, 1, '#111'); }
+  r(x - 4, y - 15, 9, 1, '#111'); r(x - 3, y - 19, 7, 4, '#111'); r(x - 3, y - 16, 7, 1, '#5b2333'); // top hat with mourning band
+}
+
+// ---------- Text ----------
+function text(s, x, y, size = 5, col = '#e8e6f0') {
+  ctx.font = `${size}px "Press Start 2P", monospace`; ctx.textAlign = 'center';
+  ctx.fillStyle = '#000'; ctx.fillText(s, x + .6, y + .6); ctx.fillStyle = col; ctx.fillText(s, x, y);
+}
+function wrap(s, n) {
+  const out = [];
+  for (const w of s.split(/\s+/)) {
+    for (const part of w.match(new RegExp(`.{1,${n}}`, 'g')) || []) {
+      if (out.length && (out[out.length - 1] + ' ' + part).length <= n) out[out.length - 1] += ' ' + part; else out.push(part);
+    }
+  }
+  return out.slice(0, 4);
+}
+function bubble(s, x, y) {
+  ctx.font = '4px "Press Start 2P", monospace';
+  const lines = wrap(s, 22), w = Math.ceil(Math.max(...lines.map(l => ctx.measureText(l).width))) + 6, h = lines.length * 6 + 4;
+  const bx = Math.round(x - w / 2), by = Math.round(y - h);
+  r(bx - 1, by - 1, w + 2, h + 2, '#111'); r(bx, by, w, h, '#f4f1e8'); r(x - 1, by + h, 3, 2, '#f4f1e8');
+  ctx.fillStyle = '#111'; ctx.textAlign = 'left';
+  lines.forEach((l, i) => ctx.fillText(l, bx + 3, by + 7 + i * 6));
+}
+function glow(x, y, rad, c) {
+  const gr = ctx.createRadialGradient(x, y, 0, x, y, rad);
+  gr.addColorStop(0, c); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gr; ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+}
+
+// ---------- Game loop ----------
+function blocked(x, y) {
+  if (x < 6 || x > W - 6 || y < 22 || y > H - 6) return true;
+  return graves.some(g => {
+    const w = g.status !== 'hospice' && g.tomb === 'mausoleum' ? 17 : 10;
+    return Math.abs(x - g.x) < w && y > g.y - 8 && y < g.y + 3;
+  });
+}
+// The grave or empty plot you're standing in front of
+function nearestSpot() {
+  let best = null, bd = 1e9;
+  for (const s of [...graves, ...plots]) {
+    const ddx = P.x - s.x, ddy = P.y - s.y, d = Math.hypot(ddx, ddy);
+    if (Math.abs(ddx) < 18 && ddy > -2 && ddy < 26 && d < bd) { bd = d; best = s; }
+  }
+  return best;
+}
+const key = s => s && (s.empty ? 'p' + s.plot : s.id);
+const typing = () => /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName) || $('#bury').open;
+
+let last = 0, lastSent = 0, sentMoving = false, cam = { x: 0, y: 0, S: 3 };
+function update(dt, t) {
+  let vx = 0, vy = 0;
+  if (!typing()) {
+    if (keys.has('arrowleft') || keys.has('a')) vx--;
+    if (keys.has('arrowright') || keys.has('d')) vx++;
+    if (keys.has('arrowup') || keys.has('w')) vy--;
+    if (keys.has('arrowdown') || keys.has('s')) vy++;
+  }
+  if (vx || vy) target = null;
+  else if (target) {
+    const ddx = target.x - P.x, ddy = target.y - P.y, d = Math.hypot(ddx, ddy);
+    if (d < 2) target = null; else { vx = ddx / d; vy = ddy / d; }
+  }
+  const len = Math.hypot(vx, vy);
+  P.moving = len > 0;
+  if (len) {
+    vx /= len; vy /= len;
+    const sp = 64 * dt, ox = P.x, oy = P.y;
+    if (!blocked(P.x + vx * sp, P.y)) P.x += vx * sp;
+    if (!blocked(P.x, P.y + vy * sp)) P.y += vy * sp;
+    else if (target && !blocked(P.x + sp, P.y)) P.x += sp; // ponytail: walk around obstacles to the right instead of pathfinding
+    if (ox === P.x && oy === P.y) target = null;
+    P.dir = Math.abs(vx) > Math.abs(vy) ? (vx < 0 ? 'left' : 'right') : (vy < 0 ? 'up' : 'down');
+  }
+  if (you && ((P.moving && t - lastSent > 100) || P.moving !== sentMoving)) {
+    lastSent = t; sentMoving = P.moving;
+    post('/api/move', { x: P.x, y: P.y, dir: P.dir, moving: P.moving });
+  }
+  for (const p of others.values()) { p.x += (p.tx - p.x) * .25; p.y += (p.ty - p.y) * .25; }
+  const a = nearestSpot();
+  if (key(a) !== key(active)) { active = a; renderCert(); }
+  updateBanner();
+}
+
+function frame(t) {
+  const dt = Math.min(.05, (t - last) / 1000); last = t;
+  update(dt, t);
+  const dpr = devicePixelRatio || 1;
+  if (cv.width !== Math.round(innerWidth * dpr) || cv.height !== Math.round(innerHeight * dpr)) { cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr); }
+  const S = Math.max(2, Math.round(Math.min(innerWidth, innerHeight * 1.6) / 420)), vw = innerWidth / S, vh = innerHeight / S;
+  const cx = W < vw ? (W - vw) / 2 : clamp(P.x - vw / 2, 0, W - vw), cy = H < vh ? (H - vh) / 2 : clamp(P.y - vh / 2, 0, H - vh);
+  cam = { x: Math.round(cx), y: Math.round(cy), S };
+  ctx.setTransform(S * dpr, 0, 0, S * dpr, -cam.x * S * dpr, -cam.y * S * dpr);
+  ctx.imageSmoothingEnabled = false;
+  r(cam.x - 1, cam.y - 1, vw + 2, vh + 2, '#0b1210');
+  if (ground) ctx.drawImage(ground, 0, 0);
+  plots.forEach(emptyPlot);
+
+  const items = graves.map(g => ({ y: g.y, d: () => drawGrave(g, t) }));
+  for (const p of others.values()) items.push({ y: p.y, d: () => drawPlayer(p, t) });
+  if (you) items.push({ y: P.y, d: () => drawPlayer({ ...P, guest: !me.login, color: '#3a3f6b' }, t) });
+  items.sort((a, b) => a.y - b.y).forEach(i => i.d());
+
+  // Night, candlelight, fireflies
+  r(cam.x - 1, cam.y - 1, vw + 2, vh + 2, 'rgba(8,10,40,.38)');
+  ctx.globalCompositeOperation = 'lighter';
+  for (const g of graves) if (g.candles && g.status !== 'hospice') glow(g.x + 6, g.y + 2, 18, 'rgba(255,160,60,.3)');
+  if (you) glow(P.x, P.y - 8, 34, 'rgba(255,220,150,.10)');
+  ctx.globalCompositeOperation = 'source-over';
+  for (const f of flies) {
+    f.p += dt; const a = (Math.sin(f.p * 2) + 1) / 2;
+    r(f.x + Math.sin(f.p * .7) * 12, f.y + Math.cos(f.p * .5) * 8, 1, 1, `rgba(215,255,140,${a * .9})`);
+  }
+
+  // Labels
+  text('REPO IN PEACE', W / 2, 7, 5, '#d9d3c0');
+  text(SIGN, W / 2, 79, 4, '#f1e3c4');
+  for (const g of graves) {
+    const n = g.name.length > 11 ? g.name.slice(0, 10) + '…' : g.name;
+    text(n, g.x, g.y + 13, 3, g === active ? '#ffe9a8' : 'rgba(220,220,230,.55)');
+  }
+  if (active?.empty) text(`Plot ${active.plot + 1}`, active.x, active.y + 13, 3, '#ffe9a8');
+  const all = [...others.values()];
+  if (you) all.push({ ...P, id: you, name: me.login || 'You' });
+  for (const p of all) {
+    text(p.name, p.x, p.y - 22, 3, p.id === you ? '#ffe9a8' : '#dfe6ff');
+    const b = bubbles.get(p.id);
+    if (b && t - b.t < 6000) bubble(b.text, p.x, p.y - 27);
+  }
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const f = fx[i], age = t - f.t0;
+    if (age > 1600) { fx.splice(i, 1); continue; }
+    ctx.globalAlpha = 1 - age / 1600; text(f.s, f.x, f.y - age / 40, 8, '#ffe9a8'); ctx.globalAlpha = 1;
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------- UI ----------
+const fmt = s => new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const days = (a, b) => Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 864e5));
+function renderCert() {
+  const el = $('#cert'), g = active;
+  if (!g) { el.hidden = true; return; }
+  el.hidden = false;
+  if (g.empty) {
+    el.innerHTML = `<h2 class="px">EMPTY PLOT</h2><h3>Plot ${g.plot + 1}</h3>
+      <p class="epitaph">Fresh soil, waiting for an unfinished project.</p>
+      <div class="acts"><button data-k="bury" title="Bury a repo here (B)">⚰️ Bury a repo here (B)</button></div>`;
+    return;
+  }
+  const since = days(g.lastCommit, new Date().toISOString());
+  const mine = me.login && me.login.toLowerCase() === g.owner.toLowerCase();
+  const head = { dead: 'DEATH CERTIFICATE', zombie: '🧟 GRAVE EMPTY!', hospice: 'HOSPICE FILE' }[g.status];
+  const note = g.status === 'zombie' ? `A new commit arrived after the funeral (${fmt(g.lastCommit)}). This repo has risen from the dead.`
+    : g.status === 'hospice' ? `Still alive: ${since} days without a commit. Will be buried in ${Math.max(0, me.deadAfter - since)} days.` : '';
+  const died = g.status === 'hospice' ? '–' : g.status === 'zombie' ? `buried ${fmt(g.diedAt)}` : fmt(g.lastCommit);
+  el.innerHTML = `<h2 class="px">${head}</h2>
+    <h3><a href="${esc(g.url)}" target="_blank" rel="noopener">${esc(g.full)}</a></h3>
+    <p class="epitaph">“${esc(g.epitaph)}”</p>
+    <dl>
+      <dt>Born</dt><dd>${fmt(g.firstCommit)}</dd>
+      <dt>Died</dt><dd>${died}</dd>
+      <dt>Lifespan</dt><dd>${days(g.firstCommit, g.lastCommit)} days</dd>
+      <dt>Commits</dt><dd>${g.commits}</dd>
+      <dt>Language</dt><dd>${esc(g.language)}</dd>
+      <dt>Stars</dt><dd>${g.stars}</dd>
+      <dt>Cause of death</dt><dd>${esc(g.cause)}</dd>
+      <dt>Last words</dt><dd>“${esc(g.lastWords)}”</dd>
+      <dt>Buried by</dt><dd>${esc(g.owner)}</dd>
+      <dt>Plot</dt><dd>${g.plot + 1}</dd>
+    </dl>
+    ${note ? `<p class="note">${esc(note)}</p>` : ''}
+    <div class="acts">
+      <button data-k="flower" title="Lay down flowers (1)">🌸 ${g.flowers}</button>
+      <button data-k="candle" title="Light a candle (2)">🕯️ ${g.candles}</button>
+      <button data-k="f" title="Pay respects (F)">F ${g.respects}</button>
+      <a class="btn" href="${esc(g.url)}/fork" target="_blank" rel="noopener" title="Forking = necromancy">🧟 Necromancy (${g.forks} forks)</a>
+      ${mine ? '<button data-k="remove" class="danger">Remove grave</button>' : ''}
+    </div>`;
+}
+$('#cert').addEventListener('click', e => { const k = e.target.closest('button')?.dataset.k; if (k) act(k); });
+
+async function act(k) {
+  if (!active) return;
+  if (k === 'bury') return openBury(active.plot);
+  if (active.empty) return;
+  if (k === 'remove') {
+    if (!confirm(`Really dig up the grave of ${active.full}?`)) return;
+    const res = await post(`/api/graves/${active.id}`, {}, 'DELETE');
+    return toast(res.ok ? 'Grave removed.' : res.data?.error);
+  }
+  const res = await post(`/api/graves/${active.id}/respect`, { kind: k });
+  if (!res.ok) toast(res.data?.error);
+}
+
+let bannerText = '';
+function updateBanner() {
+  let s = '';
+  if (active && !active.empty) {
+    const near = [...others.values(), P].filter(p => Math.hypot(p.x - active.x, p.y - active.y) < 55).length;
+    if (near >= 2) s = `🕯️ Funeral for ${active.name} · ${near} mourners · Enter to speak`;
+  }
+  if (s !== bannerText) { bannerText = s; $('#banner').textContent = s; $('#banner').hidden = !s; }
+}
+
+let toastTimer;
+function toast(s) {
+  if (!s) return;
+  const el = $('#toast'); el.textContent = s; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 3500);
+}
+function logLine(html) {
+  const d = document.createElement('div'); d.innerHTML = html;
+  const log = $('#log'); log.append(d);
+  while (log.children.length > 6) log.firstChild.remove();
+}
+function teleport(id) {
+  const g = graves.find(x => x.id === id);
+  if (!g) return pendingTeleport = id;
+  pendingTeleport = null; P.x = g.x; P.y = g.y + 14; P.dir = 'up';
+}
+
+// ---------- Input ----------
+addEventListener('keydown', e => {
+  if (typing()) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return; // leave browser shortcuts (Cmd+1 etc.) alone
+  const k = e.key.toLowerCase();
+  if (e.repeat && !keys.has(k)) return; // holding F must not spam tributes
+  if (k === 'b') return e.preventDefault(), active?.empty ? act('bury') : openBury(null);
+  if (k === 'enter') { e.preventDefault(); $('#chat').hidden = false; $('#log').style.bottom = '80px'; $('#chat input').focus(); return; }
+  if (k === 'f') return act('f');
+  if (k === '1') return act('flower');
+  if (k === '2') return act('candle');
+  if (k.startsWith('arrow')) e.preventDefault();
+  keys.add(k);
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => keys.clear());
+cv.addEventListener('pointerdown', e => {
+  const x = cam.x + e.clientX / cam.S, y = cam.y + e.clientY / cam.S;
+  const s = [...graves, ...plots].find(g => Math.abs(x - g.x) < 16 && y > g.y - 32 && y < g.y + 12); // tap a grave/plot = stand in front of it
+  target = s ? { x: s.x, y: s.y + 12 } : { x, y };
+});
+
+function closeChat() { $('#chat').hidden = true; $('#log').style.bottom = ''; $('#chat input').value = ''; $('#chat input').blur(); }
+$('#chat').addEventListener('submit', async e => {
+  e.preventDefault();
+  const text = $('#chat input').value.trim();
+  closeChat();
+  if (text) { const res = await post('/api/chat', { text }); if (!res.ok) toast(res.data?.error); }
+});
+$('#chat input').addEventListener('keydown', e => { if (e.key === 'Escape') closeChat(); });
+
+// Burial: from an empty plot (that plot) or from the header button (random free plot)
+function openBury(plot = null) {
+  if (!me.login) return toast('Sign in first – you can only bury your own repos.');
+  buryPlot = plot;
+  $('#buryWhere').textContent = plot == null
+    ? '📍 Spot: a random free plot. Tip: walk to an empty plot to choose your spot.'
+    : `📍 Spot: plot ${plot + 1}`;
+  $('#buryMsg').textContent = ''; $('#bury').showModal();
+  loadRepos();
+}
+async function loadRepos() {
+  const sel = $('#buryForm [name=repo]');
+  sel.replaceChildren(new Option('Loading your repos…', ''));
+  const res = await fetch('/api/repos'), data = await res.json();
+  sel.replaceChildren(new Option(!res.ok ? '✋ ' + (data.error || 'Could not load repos')
+    : data.length ? '– pick a repo –' : 'No public repos left to bury', ''));
+  if (res.ok) for (const r of data) sel.append(new Option(r, r));
+}
+$('#buryBtn').onclick = () => openBury(null);
+$('#buryCancel').onclick = () => $('#bury').close();
+$('#buryForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), btn = $('#burySubmit');
+  btn.disabled = true; $('#buryMsg').textContent = '⚰️ Autopsy in progress… (counting commits, reading the README, writing the obituary)';
+  const res = await post('/api/graves', { repo: f.get('repo'), cause: f.get('cause'), plot: buryPlot });
+  btn.disabled = false;
+  if (!res.ok) return $('#buryMsg').textContent = '✋ ' + (res.data?.error || 'Something went wrong');
+  $('#bury').close(); e.target.reset();
+  toast(res.data.status === 'hospice' ? `${res.data.full} was admitted to hospice (plot ${res.data.plot + 1}).` : `${res.data.full} was laid to rest in plot ${res.data.plot + 1}.`);
+  teleport(res.data.id);
+});
+
+// ---------- Start ----------
+function setState(d) {
+  graves = d.graves; rows = d.rows; layout();
+  active = null; // re-picked (and re-rendered) on the next frame
+  if (pendingTeleport) teleport(pendingTeleport);
+}
+async function start() {
+  me = await (await fetch('/api/me')).json();
+  for (const c of me.causes) $('#buryForm [name=cause]').append(new Option(c, c));
+  $('#deadAfter').textContent = me.deadAfter;
+  const login = me.oauth ? '<a href="/auth/login" class="btn">Sign in with GitHub</a>'
+    : me.dev ? '<button id="devLogin">Dev login</button>' : '<span>Sign-in not configured</span>';
+  $('#me').innerHTML = me.login ? `🎩 ${esc(me.login)} · <a href="/auth/logout">Sign out</a>` : login;
+  $('#devLogin')?.addEventListener('click', () => {
+    const n = prompt('GitHub username (dev mode only):');
+    if (n) location.href = '/auth/dev?login=' + encodeURIComponent(n);
+  });
+
+  const es = new EventSource('/api/events');
+  es.addEventListener('init', e => {
+    const d = JSON.parse(e.data);
+    you = d.you; setState(d); setPlayers(d.players);
+    if (!spawned) { P.x = W / 2; P.y = 34; spawned = true; }
+    sentMoving = !P.moving; // forces an immediate position update
+  });
+  es.addEventListener('graves', e => setState(JSON.parse(e.data)));
+  es.addEventListener('players', e => setPlayers(JSON.parse(e.data)));
+  es.addEventListener('chat', e => {
+    const c = JSON.parse(e.data);
+    bubbles.set(c.id, { text: c.text, t: performance.now() });
+    logLine(`<b>${esc(c.name)}:</b> ${esc(c.text)}`);
+  });
+  es.addEventListener('fx', e => {
+    const f = JSON.parse(e.data), g = graves.find(x => x.id === f.id);
+    if (g) fx.push({ x: g.x, y: g.y - 20, s: { f: 'F', flower: '✿', candle: '🕯' }[f.kind], t0: performance.now() });
+    const what = { f: 'pays respects', flower: 'lays down flowers', candle: 'lights a candle' }[f.kind];
+    logLine(`<b>${esc(f.name)}</b> ${what} · ${esc(g?.name)}`);
+  });
+  requestAnimationFrame(frame);
+}
+function setPlayers(list) {
+  const seen = new Set();
+  for (const p of list) {
+    if (p.id === you) continue;
+    seen.add(p.id);
+    const o = others.get(p.id);
+    if (o) Object.assign(o, p, { x: o.x, y: o.y, tx: p.x, ty: p.y });
+    else others.set(p.id, { ...p, tx: p.x, ty: p.y });
+  }
+  for (const id of others.keys()) if (!seen.has(id)) others.delete(id);
+}
+start();
+</script>
+</body>
+</html>
