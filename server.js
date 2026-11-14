@@ -13,6 +13,7 @@ const DEV_LOGIN = process.env.DEV_LOGIN === '1';
 const { GITHUB_APP_ID, GITHUB_APP_SLUG } = process.env;
 const APP_KEY = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n');
 const PRIVATE = !!(GITHUB_APP_ID && APP_KEY);
+const INSTALL_URL = PRIVATE && GITHUB_APP_SLUG ? `https://github.com/apps/${GITHUB_APP_SLUG}/installations/new` : null;
 
 // Supabase: Postgres via PostgREST (graves + tributes), Realtime for multiplayer. Schema: supabase/schema.sql
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -262,6 +263,12 @@ async function handle(req, res) {
     const u = await (await gh('/user', t.access_token)).json();
     Object.assign(s, { login: u.login, token: t.access_token });
     saveSession(res, s);
+    // No installation yet: offer read-only access to private repos right away. GitHub sends them back via the Setup URL.
+    // ponytail: asks again on every sign-in until installed; remember "declined" if that annoys public-only users
+    if (INSTALL_URL) {
+      const i = await gh('/user/installations?per_page=1', t.access_token);
+      if (i.ok && (await i.json()).total_count === 0) return redirect(res, INSTALL_URL);
+    }
     return redirect(res, '/');
   }
   if (path === '/auth/dev' && DEV_LOGIN) {
@@ -281,7 +288,7 @@ async function handle(req, res) {
   // --- API ---
   if (m === 'GET' && path === '/api/me') return send(res, 200, { login: s.login || null, pid: s.pid, name: nameOf(s), guest: !s.login,
     supabase: { url: SUPABASE_URL, key: SB_PUBLIC }, oauth: !!GITHUB_CLIENT_ID, dev: DEV_LOGIN, causes: CAUSES, deadAfter: DEAD_AFTER,
-    installUrl: PRIVATE && GITHUB_APP_SLUG ? `https://github.com/apps/${GITHUB_APP_SLUG}/installations/new` : null });
+    installUrl: INSTALL_URL });
 
   if (m === 'POST' && path === '/api/chat') {
     const text = String((await body(req)).text || '').trim().slice(0, 140);
