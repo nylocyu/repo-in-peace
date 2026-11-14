@@ -263,12 +263,6 @@ async function handle(req, res) {
     const u = await (await gh('/user', t.access_token)).json();
     Object.assign(s, { login: u.login, token: t.access_token });
     saveSession(res, s);
-    // No installation yet: offer read-only access to private repos right away. GitHub sends them back via the Setup URL.
-    // ponytail: asks again on every sign-in until installed; remember "declined" if that annoys public-only users
-    if (INSTALL_URL) {
-      const i = await gh('/user/installations?per_page=1', t.access_token);
-      if (i.ok && (await i.json()).total_count === 0) return redirect(res, INSTALL_URL);
-    }
     return redirect(res, '/');
   }
   if (path === '/auth/dev' && DEV_LOGIN) {
