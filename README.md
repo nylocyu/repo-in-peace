@@ -16,7 +16,7 @@ Needs a Supabase project (the free tier is enough): run [`supabase/schema.sql`](
 2. Import the repo in Vercel (no framework, no build step; `vercel.json` does the rest).
 3. Set the env vars from `.env.example` in Vercel. Set `BASE_URL` to the production URL, leave out `DEV_LOGIN`, and set the GitHub callback URL to `<BASE_URL>/auth/callback`.
 
-How it maps: `api/index.js` serves the API from `server.js` as one function, `public/` is static. Graves live in Postgres. Multiplayer runs on Supabase Realtime: the browser receives chat, tributes and grave updates on a private topic that only the server may send to, and movement and presence go directly between browsers. A Vercel Cron job runs the GitHub check once a day.
+How it maps: Vercel runs `server.js` as one function, `public/` is static. Graves live in Postgres. Multiplayer runs on Supabase Realtime: the browser receives chat, tributes and grave updates on a private topic that only the server may send to, and movement and presence go directly between browsers. A Vercel Cron job runs the GitHub check once a day.
 
 **Controls:** WASD/arrows or tap to walk · Enter: speak · B: bury (here on an empty plot, otherwise random plot) · F: pay respects · 1: flower · 2: candle
 
