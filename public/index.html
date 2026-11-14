@@ -85,6 +85,7 @@
     <menu><button type="button" id="buryCancel">Cancel</button><button id="burySubmit">Bury</button></menu>
   </form>
 </dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const cv = $('#c'), ctx = cv.getContext('2d');
@@ -93,7 +94,7 @@ const post = (url, data, method = 'POST') => fetch(url, { method, headers: { 'Co
   .then(async r => ({ ok: r.ok, data: r.status === 204 ? null : await r.json().catch(() => null) }));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-let me = {}, you = null, graves = [], plots = [], rows = 4, active = null, pendingTeleport = null, spawned = false, buryPlot = null;
+let me = {}, you = null, room = null, graves = [], plots = [], rows = 4, active = null, pendingTeleport = null, buryPlot = null;
 const P = { x: 0, y: 0, dir: 'down', moving: false };
 const others = new Map(), bubbles = new Map(), fx = [], keys = new Set();
 let target = null, W = 800, H = 400, ground = null, flies = [];
@@ -312,7 +313,7 @@ function update(dt, t) {
   }
   if (you && ((P.moving && t - lastSent > 100) || P.moving !== sentMoving)) {
     lastSent = t; sentMoving = P.moving;
-    post('/api/move', { x: P.x, y: P.y, dir: P.dir, moving: P.moving });
+    sendMove();
   }
   for (const p of others.values()) { p.x += (p.tx - p.x) * .25; p.y += (p.ty - p.y) * .25; }
   const a = nearestSpot();
@@ -547,38 +548,45 @@ async function start() {
     if (n) location.href = '/auth/dev?login=' + encodeURIComponent(n);
   });
 
-  const es = new EventSource('/api/events');
-  es.addEventListener('init', e => {
-    const d = JSON.parse(e.data);
-    you = d.you; setState(d); setPlayers(d.players);
-    if (!spawned) { P.x = W / 2; P.y = 34; spawned = true; }
-    sentMoving = !P.moving; // forces an immediate position update
-  });
-  es.addEventListener('graves', e => setState(JSON.parse(e.data)));
-  es.addEventListener('players', e => setPlayers(JSON.parse(e.data)));
-  es.addEventListener('chat', e => {
-    const c = JSON.parse(e.data);
-    bubbles.set(c.id, { text: c.text, t: performance.now() });
-    logLine(`<b>${esc(c.name)}:</b> ${esc(c.text)}`);
-  });
-  es.addEventListener('fx', e => {
-    const f = JSON.parse(e.data), g = graves.find(x => x.id === f.id);
-    if (g) fx.push({ x: g.x, y: g.y - 20, s: { f: 'F', flower: '✿', candle: '🕯' }[f.kind], t0: performance.now() });
-    const what = { f: 'pays respects', flower: 'lays down flowers', candle: 'lights a candle' }[f.kind];
-    logLine(`<b>${esc(f.name)}</b> ${what} · ${esc(g?.name)}`);
-  });
+  // Multiplayer via Supabase Realtime. "cemetery" is receive-only (server sends chat, tributes, graves);
+  // movement and presence go peer-to-peer on "cemetery:players".
+  const sb = supabase.createClient(me.supabase.url, me.supabase.key);
+  sb.channel('cemetery', { config: { private: true } })
+    .on('broadcast', { event: 'graves' }, ({ payload }) => setState(payload))
+    .on('broadcast', { event: 'chat' }, ({ payload: c }) => {
+      bubbles.set(c.id, { text: c.text, t: performance.now() });
+      logLine(`<b>${esc(c.name)}:</b> ${esc(c.text)}`);
+    })
+    .on('broadcast', { event: 'fx' }, ({ payload: f }) => {
+      const g = graves.find(x => x.id === f.id);
+      if (g) fx.push({ x: g.x, y: g.y - 20, s: { f: 'F', flower: '✿', candle: '🕯' }[f.kind], t0: performance.now() });
+      const what = { f: 'pays respects', flower: 'lays down flowers', candle: 'lights a candle' }[f.kind];
+      logLine(`<b>${esc(f.name)}</b> ${what} · ${esc(g?.name)}`);
+    })
+    .subscribe();
+
+  setState(await (await fetch('/api/graves')).json());
+  P.x = W / 2; P.y = 34; you = me.pid;
+  // ponytail: names in presence are client-claimed (avatar labels only); chat names come from the server
+  room = sb.channel('cemetery:players', { config: { presence: { key: me.pid } } })
+    .on('presence', { event: 'sync' }, () => {
+      const meta = room.presenceState();
+      for (const id of others.keys()) if (!meta[id]) others.delete(id);
+      for (const [id, [m]] of Object.entries(meta)) if (others.has(id)) Object.assign(others.get(id), { name: m.name, guest: m.guest });
+    })
+    .on('presence', { event: 'join' }, ({ key }) => key !== me.pid && sendMove()) // newcomers learn where we stand
+    .on('broadcast', { event: 'move' }, ({ payload: p }) => {
+      const m = room.presenceState()[p.id]?.[0], o = others.get(p.id);
+      if (o) Object.assign(o, { dir: p.dir, moving: p.moving, tx: p.x, ty: p.y });
+      else if (m) others.set(p.id, { id: p.id, name: m.name, guest: m.guest, color: colorOf(p.id), ...p, tx: p.x, ty: p.y });
+    })
+    .subscribe(st => { if (st === 'SUBSCRIBED') room.track({ name: me.name, guest: me.guest }).then(sendMove); });
   requestAnimationFrame(frame);
 }
-function setPlayers(list) {
-  const seen = new Set();
-  for (const p of list) {
-    if (p.id === you) continue;
-    seen.add(p.id);
-    const o = others.get(p.id);
-    if (o) Object.assign(o, p, { x: o.x, y: o.y, tx: p.x, ty: p.y });
-    else others.set(p.id, { ...p, tx: p.x, ty: p.y });
-  }
-  for (const id of others.keys()) if (!seen.has(id)) others.delete(id);
+const colorOf = id => `hsl(${parseInt(id, 16) % 360} 45% 38%)`;
+function sendMove() {
+  room?.send({ type: 'broadcast', event: 'move', payload: {
+    id: me.pid, x: Math.round(P.x), y: Math.round(P.y), dir: P.dir, moving: P.moving } });
 }
 start();
 </script>

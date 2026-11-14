@@ -1,6 +1,7 @@
 import http from 'node:http';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { randomBytes, createSign } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { randomBytes, createSign, createHash, createCipheriv, createDecipheriv } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { CAUSES, DEAD_AFTER, isDead, status, tomb, parseRepo, lastPage, rowsFor, isValidPlot, randomPlot, publicView } from './rules.js';
 
@@ -13,39 +14,69 @@ const { GITHUB_APP_ID, GITHUB_APP_SLUG } = process.env;
 const APP_KEY = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n');
 const PRIVATE = !!(GITHUB_APP_ID && APP_KEY);
 
-// ponytail: JSON file as DB, fine for a few thousand graves; switch to SQLite beyond that
-const DATA = new URL('./data/', import.meta.url), DB = new URL('graves.json', DATA);
-mkdirSync(DATA, { recursive: true });
-let graves = existsSync(DB) ? JSON.parse(readFileSync(DB, 'utf8')) : [];
-const plots = () => graves.map(g => g.plot);
-for (const g of graves) if (!Number.isInteger(g.plot)) g.plot = randomPlot(plots().filter(Number.isInteger)); // pre-plot data
-const state = () => ({
-  rows: rowsFor(plots()),
+// Supabase: Postgres via PostgREST (graves + tributes), Realtime for multiplayer. Schema: supabase/schema.sql
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SB_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY; // server only, bypasses RLS
+const SB_PUBLIC = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY;  // shipped to the browser
+const { SESSION_SECRET, CRON_SECRET } = process.env;
+for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SECRET_KEY: SB_SECRET, SUPABASE_PUBLISHABLE_KEY: SB_PUBLIC, SESSION_SECRET }))
+  if (!v) throw new Error(`Missing env var ${k} (see .env.example)`);
+
+async function db(path, { method = 'GET', body, prefer } = {}) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method, body: body && JSON.stringify(body),
+    headers: { apikey: SB_SECRET, 'Content-Type': 'application/json', ...(prefer && { Prefer: prefer }) } });
+  if (r.ok) return r.status === 204 || method !== 'GET' && !prefer?.includes('representation') ? null : r.json();
+  const e = await r.json().catch(() => ({}));
+  if (e.code === '23505') throw [409, 'That is already taken.']; // unique: plot, repo, or tribute
+  if (e.code === '23503') throw [404, 'Grave not found'];
+  throw new Error(`Supabase ${r.status}: ${e.message || ''}`);
+}
+const COUNTS = 'id,plot,data,flowers,candles,respects';
+const fromRow = r => ({ ...r.data, id: r.id, plot: r.plot, flowers: r.flowers, candles: r.candles, respects: r.respects });
+const loadGraves = async () => (await db(`graves?select=${COUNTS}&order=plot`)).map(fromRow);
+const toData = ({ id, plot, flowers, candles, respects, ...data }) => data;
+const view = graves => ({
+  rows: rowsFor(graves.map(g => g.plot)),
   graves: graves.map(g => ({ ...publicView(g), status: status(g), tomb: tomb(g.commits, g.stars) })),
 });
-const save = () => { writeFileSync(DB, JSON.stringify(graves, null, 1)); broadcast('graves', state()); };
+const state = async () => view(await loadGraves());
 
-// ---------- Sessions & realtime (SSE) ----------
-// ponytail: sessions live in memory, sign in again after a restart; Redis/DB if that gets annoying
-const sessions = new Map();
+// Realtime: the private "cemetery" topic is receive-only for browsers (RLS), only the server sends there,
+// so chat names, tributes and grave lists can't be faked. Movement + presence go peer-to-peer on "cemetery:players".
+// ponytail: full grave list per broadcast, fine below a few hundred graves (payload limit); send diffs beyond that
+async function broadcast(event, payload) {
+  const r = await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, { method: 'POST',
+    headers: { apikey: SB_SECRET, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ topic: 'cemetery', event, payload, private: true }] }) }).catch(e => e);
+  if (!r.ok) console.warn('Broadcast failed:', r.status || r.message);
+}
+const changed = async () => broadcast('graves', await state());
+
+// ---------- Sessions: AES-GCM sealed cookie, nothing stored server-side ----------
+// The GitHub token only ever lives in this HttpOnly cookie (encrypted with SESSION_SECRET).
+const SKEY = createHash('sha256').update(SESSION_SECRET).digest();
+const seal = o => {
+  const iv = randomBytes(12), c = createCipheriv('aes-256-gcm', SKEY, iv), d = Buffer.concat([c.update(JSON.stringify(o)), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), d]).toString('base64url');
+};
+const unseal = v => {
+  try {
+    const b = Buffer.from(v, 'base64url'), d = createDecipheriv('aes-256-gcm', SKEY, b.subarray(0, 12));
+    d.setAuthTag(b.subarray(12, 28));
+    return JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]));
+  } catch { return null; }
+};
+const saveSession = (res, s) => res.setHeader('Set-Cookie',
+  `sess=${seal(s)}; HttpOnly; SameSite=Lax; Path=/${BASE_URL.startsWith('https') ? '; Secure' : ''}`);
 function session(req, res) {
-  const sid = /(?:^|;\s*)sid=([\w-]+)/.exec(req.headers.cookie || '')?.[1];
-  if (sid && sessions.has(sid)) return sessions.get(sid);
-  const s = { sid: randomBytes(18).toString('base64url') };
-  sessions.set(s.sid, s);
-  res.setHeader('Set-Cookie', `sid=${s.sid}; HttpOnly; SameSite=Lax; Path=/${BASE_URL.startsWith('https') ? '; Secure' : ''}`);
-  return s;
+  const s = unseal(/(?:^|;\s*)sess=([\w-]+)/.exec(req.headers.cookie || '')?.[1] || '');
+  if (s) return s;
+  const fresh = { sid: randomBytes(18).toString('base64url'), pid: randomBytes(4).toString('hex') };
+  saveSession(res, fresh);
+  return fresh;
 }
-
-const players = new Map(), clients = new Set();
-let dirty = false;
-function broadcast(ev, data) {
-  const msg = `event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const c of clients) c.res.write(msg);
-}
-const visiblePlayers = () => [...players.values()].filter(p => p.x != null);
-setInterval(() => { if (dirty) { dirty = false; broadcast('players', visiblePlayers()); } }, 100);
-setInterval(() => { for (const c of clients) c.res.write(':\n\n'); }, 25e3);
+const nameOf = s => s.login || `Ghost #${s.pid.slice(0, 4)}`;
+const lastChat = new Map(); // ponytail: per-instance rate limit, a determined spammer hitting several instances gets through
 
 // ---------- GitHub ----------
 const gh = (path, token = GITHUB_TOKEN, accept = 'application/vnd.github+json') =>
@@ -122,6 +153,7 @@ async function bury(s, { repo: input, cause, plot, showName, showLastWords, allo
   if (!s.login) throw [401, 'Please sign in with GitHub first.'];
   const full = parseRepo(input);
   if (!full) throw [400, 'That is not a GitHub repo. Format: owner/repo'];
+  let graves = await loadGraves(), plots = () => graves.map(g => g.plot);
   if (plot != null && !isValidPlot(plot, plots())) throw [409, 'That plot is taken or does not exist.'];
   const rr = await gh(`/repos/${full}`, s.token);
   if (rr.status === 401) throw [401, 'Your GitHub session expired. Please sign in again.'];
@@ -150,7 +182,9 @@ async function bury(s, { repo: input, cause, plot, showName, showLastWords, allo
     ai = await obituary(repo, readme, last, first, history, hideName);
   }
 
-  // Re-check after the slow part: someone may have taken the plot (or buried the repo) meanwhile
+  // Re-check after the slow part: someone may have taken the plot (or buried the repo) meanwhile.
+  // The unique constraints on id and plot catch whatever still slips through.
+  graves = await loadGraves();
   if (graves.some(g => g.id === String(repo.id))) throw [409, 'This repo already rests here.'];
   if (plot != null && !isValidPlot(plot, plots())) throw [409, 'Someone just buried a repo in that plot. Pick another one.'];
   const now = new Date().toISOString();
@@ -162,29 +196,28 @@ async function bury(s, { repo: input, cause, plot, showName, showLastWords, allo
     epitaph: ai?.epitaph || (!hideName && repo.description) || 'It wanted to become so much. It became a repo.',
     cause: CAUSES.includes(cause) ? cause : ai?.cause || CAUSES[Math.random() * CAUSES.length | 0],
     buriedAt: now, diedAt: isDead(last.lastCommit) ? now : null,
-    flowers: 0, candles: 0, respects: 0, by: {},
   };
-  graves.push(g);
-  save();
+  try { await db('graves', { method: 'POST', body: { id: g.id, plot: g.plot, data: toData(g) } }); }
+  catch (e) { throw Array.isArray(e) && e[0] === 409 ? [409, 'Someone just buried a repo in that plot. Pick another one.'] : e; }
+  await changed();
   return { id: g.id, full: g.full, plot: g.plot, status: status(g) };
 }
 
-// Hourly: hospice -> dead, dead -> zombie on a new commit, zombie -> dead again after DEAD_AFTER quiet days
+// Daily (Vercel Cron, locally hourly): hospice -> dead, dead -> zombie on a new commit, zombie -> dead again after DEAD_AFTER quiet days
 // ponytail: one request per grave; without GITHUB_TOKEN that's max 60/h, so set a token beyond ~50 graves
 // Private graves whose access was revoked are removed: no access, no grave.
 async function refresh() {
-  const revoked = new Set();
-  for (const g of graves) {
+  const revoked = [];
+  for (const g of await loadGraves()) {
     try { Object.assign(g, await latestCommit(g.full, g.private ? await repoToken(g.full) : undefined)); }
-    catch (e) { if (e === REVOKED) revoked.add(g); continue; }
+    catch (e) { if (e === REVOKED) revoked.push(g.id); continue; }
     if (status(g) !== 'dead' && isDead(g.lastCommit)) g.diedAt = new Date().toISOString();
     else if (status(g) === 'dead' && !isDead(g.lastCommit)) g.diedAt = null; // buried too early (DEAD_AFTER was raised): back to hospice
+    await db(`graves?id=eq.${g.id}`, { method: 'PATCH', body: { data: toData(g) } }); // PATCH, not upsert: never resurrects a deleted grave
   }
-  graves = graves.filter(g => !revoked.has(g));
-  save();
+  if (revoked.length) await db(`graves?id=in.(${revoked.join(',')})`, { method: 'DELETE' });
+  await changed();
 }
-setInterval(refresh, 36e5);
-refresh();
 
 // ---------- HTTP ----------
 const send = (res, code, data) => {
@@ -192,7 +225,9 @@ const send = (res, code, data) => {
   res.writeHead(code, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
 };
 const redirect = (res, to) => res.writeHead(302, { Location: to }).end();
-const body = req => new Promise((ok, fail) => {
+const body = req => req.body !== undefined
+  ? (typeof req.body === 'object' && req.body ? Promise.resolve(req.body) : Promise.reject([400, 'Invalid JSON']))
+  : new Promise((ok, fail) => {
   let d = '';
   req.on('data', c => { d += c; if (d.length > 1e4) req.destroy(); });
   req.on('end', () => { try { ok(JSON.parse(d || '{}')); } catch { fail([400, 'Invalid JSON']); } });
@@ -213,6 +248,7 @@ async function handle(req, res) {
   if (path === '/auth/login') {
     if (!GITHUB_CLIENT_ID) throw [500, 'GitHub OAuth is not configured (GITHUB_CLIENT_ID).'];
     s.state = randomBytes(16).toString('hex');
+    saveSession(res, s);
     return redirect(res, `https://github.com/login/oauth/authorize?${new URLSearchParams({ client_id: GITHUB_CLIENT_ID, redirect_uri: `${BASE_URL}/auth/callback`, state: s.state })}`);
   }
   if (path === '/auth/callback') {
@@ -225,53 +261,34 @@ async function handle(req, res) {
     if (!t.access_token) throw [401, 'GitHub sign-in failed.'];
     const u = await (await gh('/user', t.access_token)).json();
     Object.assign(s, { login: u.login, token: t.access_token });
+    saveSession(res, s);
     return redirect(res, '/');
   }
   if (path === '/auth/dev' && DEV_LOGIN) {
     const login = url.searchParams.get('login') || '';
     if (!/^[\w-]{1,39}$/.test(login)) throw [400, 'Invalid name'];
     s.login = login;
+    saveSession(res, s);
     return redirect(res, '/');
   }
-  if (path === '/auth/logout') { delete s.login; delete s.token; return redirect(res, '/'); }
-
-  // --- API ---
-  if (m === 'GET' && path === '/api/me') return send(res, 200, { login: s.login || null, oauth: !!GITHUB_CLIENT_ID, dev: DEV_LOGIN, causes: CAUSES, deadAfter: DEAD_AFTER,
-    installUrl: PRIVATE && GITHUB_APP_SLUG ? `https://github.com/apps/${GITHUB_APP_SLUG}/installations/new` : null });
-
-  if (m === 'GET' && path === '/api/events') {
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    if (!players.has(s.pid)) {
-      s.pid = randomBytes(4).toString('hex');
-      players.set(s.pid, { id: s.pid, color: `hsl(${parseInt(s.pid, 16) % 360} 45% 38%)`, x: null, y: null, dir: 'down', moving: false });
-    }
-    Object.assign(players.get(s.pid), { name: s.login || `Ghost #${s.pid.slice(0, 4)}`, guest: !s.login });
-    const c = { res, s };
-    clients.add(c);
-    res.write(`event: init\ndata: ${JSON.stringify({ you: s.pid, ...state(), players: visiblePlayers() })}\n\n`);
-    req.on('close', () => {
-      clients.delete(c);
-      if (![...clients].some(o => o.s === s)) { players.delete(s.pid); dirty = true; }
-    });
-    return;
-  }
-
-  if (m === 'POST' && path === '/api/move') {
-    const p = players.get(s.pid), d = await body(req);
-    if (!p) throw [404, 'No player'];
-    if (Number.isFinite(d.x) && Number.isFinite(d.y)) { p.x = Math.round(d.x); p.y = Math.round(d.y); }
-    p.dir = ['up', 'down', 'left', 'right'].includes(d.dir) ? d.dir : 'down';
-    p.moving = !!d.moving;
-    dirty = true;
+  if (path === '/auth/logout') { delete s.login; delete s.token; saveSession(res, s); return redirect(res, '/'); }
+  if (path === '/api/cron') { // Vercel Cron sends "Authorization: Bearer $CRON_SECRET"
+    if (!CRON_SECRET || req.headers.authorization !== `Bearer ${CRON_SECRET}`) throw [401, 'Nope'];
+    await refresh();
     return send(res, 204);
   }
 
+  // --- API ---
+  if (m === 'GET' && path === '/api/me') return send(res, 200, { login: s.login || null, pid: s.pid, name: nameOf(s), guest: !s.login,
+    supabase: { url: SUPABASE_URL, key: SB_PUBLIC }, oauth: !!GITHUB_CLIENT_ID, dev: DEV_LOGIN, causes: CAUSES, deadAfter: DEAD_AFTER,
+    installUrl: PRIVATE && GITHUB_APP_SLUG ? `https://github.com/apps/${GITHUB_APP_SLUG}/installations/new` : null });
+
   if (m === 'POST' && path === '/api/chat') {
-    const p = players.get(s.pid), text = String((await body(req)).text || '').trim().slice(0, 140);
-    if (!p || !text) throw [400, 'Nothing to say?'];
-    if (Date.now() - (s.lastChat || 0) < 800) throw [429, 'Slow down, the dead are not going anywhere.'];
-    s.lastChat = Date.now();
-    broadcast('chat', { id: p.id, name: p.name, text });
+    const text = String((await body(req)).text || '').trim().slice(0, 140);
+    if (!text) throw [400, 'Nothing to say?'];
+    if (Date.now() - (lastChat.get(s.sid) || 0) < 800) throw [429, 'Slow down, the dead are not going anywhere.'];
+    lastChat.set(s.sid, Date.now());
+    await broadcast('chat', { id: s.pid, name: nameOf(s), text });
     return send(res, 204);
   }
 
@@ -287,41 +304,47 @@ async function handle(req, res) {
       repos.push(...batch);
       if (batch.length < 100) break;
     }
-    const buried = new Set(graves.map(g => g.id));
+    const buried = new Set((await db('graves?select=id')).map(g => g.id));
     return send(res, 200, repos
       .filter(r => (!r.private || PRIVATE) && !buried.has(String(r.id)) && (s.token ? r.permissions?.admin : true))
       .map(r => ({ full: r.full_name, private: r.private })));
   }
-  if (m === 'GET' && path === '/api/graves') return send(res, 200, state());
+  if (m === 'GET' && path === '/api/graves') return send(res, 200, await state());
   if (m === 'POST' && path === '/api/graves') return send(res, 201, await bury(s, await body(req)));
 
   const gm = /^\/api\/graves\/(\d+)(\/respect)?$/.exec(path);
-  const g = gm && graves.find(x => x.id === gm[1]);
-  if (gm && !g) throw [404, 'Grave not found'];
 
   if (m === 'POST' && gm?.[2]) {
     const kind = (await body(req)).kind, field = KINDS[kind];
     if (!field) throw [400, 'Unknown tribute'];
-    const who = s.login || s.sid, mine = (g.by[who] ||= []);
-    if (mine.includes(kind)) throw [409, 'You already did that here.'];
-    mine.push(kind);
-    g[field]++;
-    save();
-    broadcast('fx', { id: g.id, kind, name: players.get(s.pid)?.name || 'Someone' });
+    // Atomic insert + count (supabase/schema.sql); the primary key makes it once per person, grave and kind
+    try { await db('rpc/tribute', { method: 'POST', body: { gid: gm[1], who: s.login || s.sid, kind } }); }
+    catch (e) { throw Array.isArray(e) && e[0] === 409 ? [409, 'You already did that here.'] : e; }
+    await broadcast('fx', { id: gm[1], kind, name: nameOf(s) });
+    await changed();
     return send(res, 204);
   }
   if (m === 'DELETE' && gm && !gm[2]) {
-    if (s.login?.toLowerCase() !== g.owner.toLowerCase()) throw [403, 'Only whoever buried it may dig it up.'];
-    graves = graves.filter(x => x !== g);
-    save();
+    const [row] = await db(`graves?id=eq.${gm[1]}&select=data`);
+    if (!row) throw [404, 'Grave not found'];
+    if (s.login?.toLowerCase() !== row.data.owner.toLowerCase()) throw [403, 'Only whoever buried it may dig it up.'];
+    await db(`graves?id=eq.${gm[1]}`, { method: 'DELETE' });
+    await changed();
     return send(res, 204);
   }
 
   throw [404, 'Not found'];
 }
 
-http.createServer((req, res) => handle(req, res).catch(e => {
+// Vercel imports this (api/index.js); `npm start` runs it as a plain Node server
+export default function app(req, res) {
+  return handle(req, res).catch(e => {
   if (Array.isArray(e)) return send(res, e[0], { error: e[1] });
   console.error(e);
   send(res, 500, { error: 'Internal error' });
-})).listen(PORT, () => console.log(`🪦 Repo in Peace running at ${BASE_URL}`));
+  });
+}
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  http.createServer(app).listen(PORT, () => console.log(`🪦 Repo in Peace running at ${BASE_URL}`));
+  setInterval(() => refresh().catch(console.error), 36e5);
+}
