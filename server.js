@@ -336,7 +336,7 @@ async function handle(req, res) {
   throw [404, 'Not found'];
 }
 
-// Vercel imports this (api/index.js); `npm start` runs it as a plain Node server
+// Vercel runs this file as the server entrypoint (default export); `npm start` runs it as a plain Node server
 export default function app(req, res) {
   return handle(req, res).catch(e => {
   if (Array.isArray(e)) return send(res, e[0], { error: e[1] });

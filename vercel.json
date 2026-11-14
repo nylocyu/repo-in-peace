@@ -1,5 +1,12 @@
 {
+  "regions": [
+    "fra1"
+  ],
   "outputDirectory": "public",
-  "rewrites": [{ "source": "/(api|auth)/(.*)", "destination": "/api" }],
-  "crons": [{ "path": "/api/cron", "schedule": "0 4 * * *" }]
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "0 4 * * *"
+    }
+  ]
 }
