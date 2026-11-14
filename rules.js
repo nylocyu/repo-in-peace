@@ -43,3 +43,10 @@ export function parseRepo(input) {
 
 // With per_page=1 the last page number = number of commits
 export const lastPage = link => +(/[?&]page=(\d+)>; rel="last"/.exec(link || '')?.[1] || 1);
+
+// What everyone sees of a grave. Private repos: never a link, name and last words only if the burier allowed it.
+export const publicView = ({ by, ...g }) => !g.private ? g : {
+  ...g, url: null,
+  ...(!g.showName && { name: 'Unknown project', full: `${g.owner}/🔒 private` }),
+  ...(!g.showLastWords && { lastWords: '🔒 sealed' }),
+};

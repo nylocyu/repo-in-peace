@@ -42,3 +42,18 @@ test('plots', () => {
   const some = front.slice(0, 10);
   for (let i = 0; i < 50; i++) { const q = r.randomPlot(some); assert.ok(!some.includes(q) && q < 36, `got ${q}`); }
 });
+
+test('private graves are masked', () => {
+  const g = { full: 'me/secret', name: 'secret', url: 'https://github.com/me/secret', owner: 'me', lastWords: 'fix prod creds', by: { me: ['f'] } };
+  assert.deepEqual(r.publicView(g), { full: 'me/secret', name: 'secret', url: 'https://github.com/me/secret', owner: 'me', lastWords: 'fix prod creds' });
+  const p = r.publicView({ ...g, private: true, showName: false, showLastWords: false });
+  assert.equal(p.url, null);
+  assert.equal(p.name, 'Unknown project');
+  assert.ok(!JSON.stringify(p).includes('secret'), 'name leaks');
+  assert.ok(!JSON.stringify(p).includes('creds'), 'last words leak');
+  assert.equal('by' in p, false);
+  const shown = r.publicView({ ...g, private: true, showName: true, showLastWords: true });
+  assert.equal(shown.full, 'me/secret');
+  assert.equal(shown.lastWords, 'fix prod creds');
+  assert.equal(shown.url, null);
+});

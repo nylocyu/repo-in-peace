@@ -41,6 +41,9 @@
   dialog h2 { font-size: 12px; margin: 0 0 10px; }
   dialog label { display: block; margin: 10px 0; }
   dialog input, dialog select { display: block; width: 100%; font: 20px VT323, monospace; padding: 6px; margin-top: 4px; border: 3px solid var(--ink); background: #fff8e6; color: var(--ink); }
+  dialog input[type=checkbox] { display: inline; width: auto; margin: 0 6px 0 0; }
+  dialog fieldset { border: 3px solid var(--ink); margin: 10px 0; padding: 4px 8px; }
+  dialog fieldset label { margin: 6px 0; }
   dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 14px 0 0; }
   #buryWhere { background: #2b211815; padding: 6px; }
   #buryMsg { min-height: 1.2em; margin: 6px 0 0; }
@@ -67,9 +70,16 @@
 <dialog id="bury">
   <form id="buryForm">
     <h2 class="px">Bury a repo</h2>
-    <p>Only your own public repos. Anything with a commit in the last <span id="deadAfter">90</span> days goes to hospice first.</p>
+    <p>Only your own repos. Anything with a commit in the last <span id="deadAfter">90</span> days goes to hospice first.</p>
     <p id="buryWhere"></p>
     <label>Repo <select name="repo" required></select></label>
+    <p id="installHint" hidden>Missing a private repo? <a target="_blank" rel="noopener">Grant read-only access to selected repos</a>, then reopen this dialog.</p>
+    <fieldset id="privacy" hidden>
+      <legend>🔒 Private repo – what may the world see?</legend>
+      <label><input type="checkbox" name="showName">Show the repo name</label>
+      <label><input type="checkbox" name="showLastWords">Show the last commit message</label>
+      <label><input type="checkbox" name="allowAi">Let Claude read the README and recent commits to write the obituary (sent to the Anthropic API, not stored here)</label>
+    </fieldset>
     <label>Cause of death <select name="cause"><option value="">🎲 Let fate (AI) decide</option></select></label>
     <p id="buryMsg" role="status"></p>
     <menu><button type="button" id="buryCancel">Cancel</button><button id="burySubmit">Bury</button></menu>
@@ -383,7 +393,7 @@ function renderCert() {
     : g.status === 'hospice' ? `Still alive: ${since} days without a commit. Will be buried in ${Math.max(0, me.deadAfter - since)} days.` : '';
   const died = g.status === 'hospice' ? '–' : g.status === 'zombie' ? `buried ${fmt(g.diedAt)}` : fmt(g.lastCommit);
   el.innerHTML = `<h2 class="px">${head}</h2>
-    <h3><a href="${esc(g.url)}" target="_blank" rel="noopener">${esc(g.full)}</a></h3>
+    <h3>${g.url ? `<a href="${esc(g.url)}" target="_blank" rel="noopener">${esc(g.full)}</a>` : esc(g.full)}</h3>
     <p class="epitaph">“${esc(g.epitaph)}”</p>
     <dl>
       <dt>Born</dt><dd>${fmt(g.firstCommit)}</dd>
@@ -402,7 +412,7 @@ function renderCert() {
       <button data-k="flower" title="Lay down flowers (1)">🌸 ${g.flowers}</button>
       <button data-k="candle" title="Light a candle (2)">🕯️ ${g.candles}</button>
       <button data-k="f" title="Pay respects (F)">F ${g.respects}</button>
-      <a class="btn" href="${esc(g.url)}/fork" target="_blank" rel="noopener" title="Forking = necromancy">🧟 Necromancy (${g.forks} forks)</a>
+      ${g.url ? `<a class="btn" href="${esc(g.url)}/fork" target="_blank" rel="noopener" title="Forking = necromancy">🧟 Necromancy (${g.forks} forks)</a>` : ''}
       ${mine ? '<button data-k="remove" class="danger">Remove grave</button>' : ''}
     </div>`;
 }
@@ -494,16 +504,23 @@ async function loadRepos() {
   sel.replaceChildren(new Option('Loading your repos…', ''));
   const res = await fetch('/api/repos'), data = await res.json();
   sel.replaceChildren(new Option(!res.ok ? '✋ ' + (data.error || 'Could not load repos')
-    : data.length ? '– pick a repo –' : 'No public repos left to bury', ''));
-  if (res.ok) for (const r of data) sel.append(new Option(r, r));
+    : data.length ? '– pick a repo –' : 'No repos left to bury', ''));
+  if (res.ok) for (const r of data) {
+    const o = new Option(r.private ? `🔒 ${r.full}` : r.full, r.full);
+    o.dataset.private = r.private ? '1' : '';
+    sel.append(o);
+  }
+  sel.onchange();
 }
+$('#buryForm [name=repo]').onchange = e => $('#privacy').hidden = !$('#buryForm [name=repo]').selectedOptions[0]?.dataset.private;
 $('#buryBtn').onclick = () => openBury(null);
 $('#buryCancel').onclick = () => $('#bury').close();
 $('#buryForm').addEventListener('submit', async e => {
   e.preventDefault();
   const f = new FormData(e.target), btn = $('#burySubmit');
   btn.disabled = true; $('#buryMsg').textContent = '⚰️ Autopsy in progress… (counting commits, reading the README, writing the obituary)';
-  const res = await post('/api/graves', { repo: f.get('repo'), cause: f.get('cause'), plot: buryPlot });
+  const res = await post('/api/graves', { repo: f.get('repo'), cause: f.get('cause'), plot: buryPlot,
+    showName: f.has('showName'), showLastWords: f.has('showLastWords'), allowAi: f.has('allowAi') });
   btn.disabled = false;
   if (!res.ok) return $('#buryMsg').textContent = '✋ ' + (res.data?.error || 'Something went wrong');
   $('#bury').close(); e.target.reset();
@@ -521,6 +538,7 @@ async function start() {
   me = await (await fetch('/api/me')).json();
   for (const c of me.causes) $('#buryForm [name=cause]').append(new Option(c, c));
   $('#deadAfter').textContent = me.deadAfter;
+  if (me.installUrl) { $('#installHint').hidden = false; $('#installHint a').href = me.installUrl; }
   const login = me.oauth ? '<a href="/auth/login" class="btn">Sign in with GitHub</a>'
     : me.dev ? '<button id="devLogin">Dev login</button>' : '<span>Sign-in not configured</span>';
   $('#me').innerHTML = me.login ? `🎩 ${esc(me.login)} · <a href="/auth/logout">Sign out</a>` : login;
