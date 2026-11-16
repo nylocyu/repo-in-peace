@@ -115,6 +115,8 @@ const r = (x, y, w, h, c) => { pen.fillStyle = c; pen.fillRect(Math.round(x), Ma
 const COLS = 12, GX = 44, GY = 50, TOP = 90, PADX = 34;
 const SIGN = 'Walk to an empty plot to bury a repo';
 const plotPos = i => ({ x: PADX + (i % COLS) * GX + GX / 2, y: TOP + 40 + Math.floor(i / COLS) * GY });
+const TIP_URL = 'https://buy.stripe.com/28E00lehJ1PigXeg7l9k400';
+const BOX = { box: true, x: 0, y: 38 }; // offering box just inside the gate; x set in layout()
 
 function layout() {
   for (const g of graves) Object.assign(g, plotPos(g.plot));
@@ -126,6 +128,7 @@ function layout() {
     W = nw; H = nh; ground = paintGround();
     flies = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: TOP + Math.random() * (H - TOP), p: Math.random() * 9 }));
   }
+  BOX.x = W / 2 + 24;
 }
 
 function paintGround() {
@@ -193,6 +196,13 @@ function emptyPlot(p) {
   const { x, y } = p, hi = p === active, peg = hi ? '#ffe9a8' : '#5c4c3a';
   r(x - 8, y - 5, 16, 7, hi ? 'rgba(90,60,30,.55)' : 'rgba(40,28,16,.4)');
   r(x - 9, y - 6, 1, 2, peg); r(x + 8, y - 6, 1, 2, peg); r(x - 9, y + 2, 1, 2, peg); r(x + 8, y + 2, 1, 2, peg);
+}
+function drawBox(t) {
+  const { x, y } = BOX;
+  r(x - 5, y - 1, 10, 2, 'rgba(0,0,0,.35)'); r(x - 1, y - 6, 3, 6, '#3b2716');                 // shadow, post
+  r(x - 6, y - 14, 12, 8, '#6b4a2b'); r(x - 6, y - 14, 12, 1, '#8a5a34'); r(x + 5, y - 13, 1, 7, '#4a3220');
+  r(x - 6, y - 11, 12, 1, '#2b2b33'); r(x - 2, y - 13, 4, 1, '#0c0c0c'); r(x - 1, y - 9, 2, 2, '#c9a640'); // iron band, coin slot, lock
+  if (BOX === active) { const c = (t / 600) % 1; r(x, y - 15 - Math.round((1 - c) * 6), 1, 2, '#f1d27a'); } // a coin dropping in
 }
 const FLOWERS = ['#f48fb1', '#ffe082', '#ffffff', '#ce93d8'];
 function drawGrave(g, t) {
@@ -278,6 +288,7 @@ function glow(x, y, rad, c) {
 // ---------- Game loop ----------
 function blocked(x, y) {
   if (x < 6 || x > W - 6 || y < 22 || y > H - 6) return true;
+  if (Math.abs(x - BOX.x) < 7 && y > BOX.y - 6 && y < BOX.y + 2) return true;
   return graves.some(g => {
     const w = g.status !== 'hospice' && g.tomb === 'mausoleum' ? 17 : 10;
     return Math.abs(x - g.x) < w && y > g.y - 8 && y < g.y + 3;
@@ -286,13 +297,13 @@ function blocked(x, y) {
 // The grave or empty plot you're standing in front of
 function nearestSpot() {
   let best = null, bd = 1e9;
-  for (const s of [...graves, ...plots]) {
+  for (const s of [...graves, ...plots, BOX]) {
     const ddx = P.x - s.x, ddy = P.y - s.y, d = Math.hypot(ddx, ddy);
     if (Math.abs(ddx) < 18 && ddy > -2 && ddy < 26 && d < bd) { bd = d; best = s; }
   }
   return best;
 }
-const key = s => s && (s.empty ? 'p' + s.plot : s.id);
+const key = s => s && (s.box ? 'box' : s.empty ? 'p' + s.plot : s.id);
 const typing = () => /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName) || $('#bury').open;
 
 let last = 0, lastSent = 0, sentMoving = false, cam = { x: 0, y: 0, S: 3 };
@@ -345,6 +356,7 @@ function frame(t) {
   plots.forEach(emptyPlot);
 
   const items = graves.map(g => ({ y: g.y, d: () => drawGrave(g, t) }));
+  items.push({ y: BOX.y, d: () => drawBox(t) });
   for (const p of others.values()) items.push({ y: p.y, d: () => drawPlayer(p, t) });
   if (you) items.push({ y: P.y, d: () => drawPlayer({ ...P, guest: !me.login, color: '#3a3f6b' }, t) });
   items.sort((a, b) => a.y - b.y).forEach(i => i.d());
@@ -363,6 +375,7 @@ function frame(t) {
   // Labels
   text('REPO IN PEACE', W / 2, 7, 5, '#d9d3c0');
   text(SIGN, W / 2, 79, 4, '#f1e3c4');
+  text('TIP THE GRAVEDIGGER', BOX.x, BOX.y + 8, 3, BOX === active ? '#ffe9a8' : 'rgba(220,220,230,.55)');
   for (const g of graves) {
     const n = g.name.length > 11 ? g.name.slice(0, 10) + '…' : g.name;
     text(n, g.x, g.y + 13, 3, g === active ? '#ffe9a8' : 'rgba(220,220,230,.55)');
@@ -414,6 +427,12 @@ function renderCert() {
   const el = $('#cert'), g = active;
   if (!g) { el.hidden = true; return; }
   el.hidden = false;
+  if (g.box) {
+    el.innerHTML = `<h2 class="px">OFFERING BOX</h2><h3>Tip the gravedigger</h3>
+      <p class="epitaph">Someone has to dig the holes, trim the grass and keep the candles lit. A coin keeps this cemetery open.</p>
+      <div class="acts"><a class="btn" href="${TIP_URL}" target="_blank" rel="noopener">🪙 Tip the gravedigger</a></div>`;
+    return;
+  }
   if (g.empty) {
     el.innerHTML = `<h2 class="px">EMPTY PLOT</h2><h3>Plot ${g.plot + 1}</h3>
       <p class="epitaph">Fresh soil, waiting for an unfinished project.</p>
@@ -455,7 +474,7 @@ $('#cert').addEventListener('click', e => { const k = e.target.closest('button')
 async function act(k) {
   if (!active) return;
   if (k === 'bury') return openBury(active.plot);
-  if (active.empty) return;
+  if (active.empty || active.box) return;
   if (k === 'remove') {
     if (!confirm(`Really dig up the grave of ${active.full}?`)) return;
     const res = await post(`/api/graves/${active.id}`, {}, 'DELETE');
@@ -468,7 +487,7 @@ async function act(k) {
 let bannerText = '';
 function updateBanner() {
   let s = '';
-  if (active && !active.empty) {
+  if (active && !active.empty && !active.box) {
     const near = [...others.values(), P].filter(p => Math.hypot(p.x - active.x, p.y - active.y) < 55).length;
     if (near >= 2) s = `🕯️ Funeral for ${active.name} · ${near} mourners · Enter to speak`;
   }
@@ -510,7 +529,7 @@ addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
 cv.addEventListener('pointerdown', e => {
   const x = cam.x + e.clientX / cam.S, y = cam.y + e.clientY / cam.S;
-  const s = [...graves, ...plots].find(g => Math.abs(x - g.x) < 16 && y > g.y - 32 && y < g.y + 12); // tap a grave/plot = stand in front of it
+  const s = [...graves, ...plots, BOX].find(g => Math.abs(x - g.x) < 16 && y > g.y - 32 && y < g.y + 12); // tap a grave/plot = stand in front of it
   target = s ? { x: s.x, y: s.y + 12 } : { x, y };
 });
 
