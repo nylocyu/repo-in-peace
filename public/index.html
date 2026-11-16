@@ -223,13 +223,13 @@ function drawGrave(g, t) {
   }
 }
 function drawPlayer(p, t) {
-  let x = Math.round(p.x), y = Math.round(p.y); const f = p.moving ? Math.floor(t / 140) % 2 : 0;
+  let x = Math.round(p.x), y = Math.round(p.y);
   r(x - 4, y - 1, 9, 2, 'rgba(0,0,0,.35)');
   const ex = p.dir === 'left' ? -1 : p.dir === 'right' ? 1 : 0;
   if (p.guest) { // guests haunt the place as ghosts
-    const b = Math.round(Math.sin(t / 300 + x)), c = 'rgba(225,232,255,.82)';
+    const b = Math.round(Math.sin(t / 400 + (parseInt(p.id, 16) || 0)) * 1.5), c = 'rgba(225,232,255,.82)';
     r(x - 4, y - 15 + b, 9, 10, c); r(x - 3, y - 16 + b, 7, 1, c);
-    for (let i = 0; i < 3; i++) r(x - 4 + i * 3 + f, y - 5 + b, 2, 2, c);
+    for (let i = 0; i < 3; i++) r(x - 4 + i * 3, y - 5 + b + (Math.sin(t / 180 - i * 2) > 0), 2, 2, c); // tail ripples, no steps
     if (p.dir !== 'up') { r(x - 2 + ex, y - 12 + b, 1, 2, '#1a1a2e'); r(x + 2 + ex, y - 12 + b, 1, 2, '#1a1a2e'); }
     return;
   }
