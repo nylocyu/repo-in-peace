@@ -648,8 +648,9 @@ function setState(d) {
 }
 // Load the cemetery (the server checks access) and listen on its channels; rerun on every "graves" ping
 async function reload() {
-  const res = await fetch('/api/graves' + (CEM ? '?c=' + CEM : '')), d = await res.json();
-  if (!res.ok) return location.replace('/?denied=' + encodeURIComponent(CEM_NAME)); // invite-only, or access was taken away
+  const res = await fetch('/api/graves' + (CEM ? '?c=' + CEM : '')), d = await res.json().catch(() => ({}));
+  if (res.status === 403 && CEM) return location.replace('/?denied=' + encodeURIComponent(CEM_NAME)); // invite-only, or access was taken away
+  if (!res.ok) return notice(`🪦 The cemetery could not be loaded (${esc(d.error || res.status)}). Please try again later.`);
   if (d.topic !== info.topic) listen(d);
   setState(d); renderSettings();
 }
