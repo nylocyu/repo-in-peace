@@ -155,7 +155,7 @@ function layout() {
     W = nw; H = nh; ground = paintGround();
     flies = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: TOP + Math.random() * (H - TOP), p: Math.random() * 9 }));
   }
-  BOX.x = W / 2 + 24; WAY.x = W / 2 - 24;
+  BOX.x = W / 2 + 30; WAY.x = W / 2 - 30; // far enough apart that "CENTRAL CEMETERY" and "TIP THE GRAVEDIGGER" do not overlap
 }
 
 function paintGround() {
