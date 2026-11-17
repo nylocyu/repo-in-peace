@@ -57,3 +57,70 @@ test('private graves are masked', () => {
   assert.equal(shown.lastWords, 'fix prod creds');
   assert.equal(shown.url, null);
 });
+
+test('cemetery access and invites', () => {
+  const cem = { ...r.defaultCemetery('Alice'), guests: ['bob'], inviteToken: 'tok123' };
+  assert.equal(cem.loginRequired, true, 'sign-in required by default');
+  assert.equal(r.canEnter(null, undefined), true, 'Zentralfriedhof is open to everyone');
+  assert.equal(r.canEnter(cem, 'alice'), true);
+  assert.equal(r.canEnter(cem, 'ALICE'), true, 'logins are case-insensitive');
+  assert.equal(r.canEnter(cem, 'Bob'), true);
+  assert.equal(r.canEnter(cem, 'eve'), false);
+  assert.equal(r.canEnter(cem, undefined), false);
+  assert.equal(r.canEnter(cem, undefined, 'tok123'), false, 'sign-in required: the link alone is not enough');
+
+  const open = { ...cem, loginRequired: false };
+  assert.equal(r.canEnter(open, undefined, 'tok123'), true, 'no sign-in: the link is enough');
+  assert.equal(r.canEnter(open, 'eve', 'tok123'), true);
+  assert.equal(r.canEnter(open, undefined, 'tok124'), false);
+  assert.equal(r.canEnter(open, undefined), false, 'no link, no entry');
+  assert.equal(r.canEnter({ ...open, inviteToken: 'new456' }, undefined, 'tok123'), false, 'resetting the link locks old holders out');
+  assert.equal(r.canEnter({ ...open, inviteToken: null }, undefined, null), false);
+
+  assert.equal(r.inviteOk({ ...cem, inviteToken: null }, 'anything'), false, 'no link, no entry');
+  assert.equal(r.inviteOk(cem, 'tok123'), true);
+  assert.equal(r.inviteOk(cem, 'tok124'), false);
+  assert.equal(r.inviteOk(cem, 'tok'), false);
+  assert.equal(r.inviteOk(cem, undefined), false);
+  assert.equal(r.inviteOk(cem, ['tok123']), false);
+});
+
+test('private repos never leak out of their cemetery', () => {
+  const base = { owner: 'Alice', cemetery: 'alice', commits: 3, stars: 0, lastCommit: '2026-01-01', diedAt: '2026-05-01', epitaph: 'rip' };
+  const pub = { ...base, id: '1', plot: 0, centralPlot: 7, name: 'open', full: 'alice/open' };
+  const priv = { ...base, id: '2', plot: 1, centralPlot: 8, // centralPlot should be impossible (DB check), the view must still hold
+    name: 'topsecret', full: 'alice/topsecret', url: 'https://github.com/alice/topsecret', lastWords: 'leak creds',
+    epitaph: 'topsecret obituary', private: true, showName: true, showLastWords: true };
+  const other = { ...base, id: '3', plot: 0, centralPlot: null, owner: 'carol', cemetery: 'carol', name: 'carols', full: 'carol/carols' };
+  const all = [pub, priv, other];
+  const cem = { ...r.defaultCemetery('alice'), guests: ['bob'], inviteToken: 'tok123' };
+  const leaks = v => /topsecret|leak creds|"2"/.test(JSON.stringify(v));
+
+  const central = r.cemeteryView(all, null, 'eve');
+  assert.deepEqual(central.graves.map(g => g.id), ['1']);
+  assert.equal(central.graves[0].plot, 7, 'central placement keeps its own plot');
+  assert.equal(central.graves[0].central, true);
+  assert.ok(!leaks(central), 'private repo leaks onto the Zentralfriedhof');
+  assert.ok(!leaks(r.cemeteryView(all, null, 'alice')), 'not even for the owner');
+  assert.ok(!leaks(r.cemeteryView(all, null, undefined, 'tok123')), 'not even with the invite token');
+
+  assert.equal(r.cemeteryView(all, cem, 'eve'), null, 'strangers get nothing');
+  assert.equal(r.cemeteryView(all, cem, undefined), null);
+  assert.equal(r.cemeteryView(all, cem, undefined, 'tok123'), null, 'sign-in required: token alone gets nothing');
+  assert.equal(r.cemeteryView(all, { ...cem, loginRequired: false }, undefined, 'wrong'), null);
+
+  const viewers = [['alice'], ['bob'], [undefined, 'tok123', { loginRequired: false }]];
+  for (const [who, token, extra] of viewers) {
+    const v = r.cemeteryView(all, { ...cem, ...extra }, who, token);
+    assert.deepEqual(v.graves.map(g => g.id).sort(), ['1', '2'], `${who || 'link holder'} sees the private grave`);
+    assert.equal(v.graves.find(g => g.id === '2').url, null, 'still never a link');
+    assert.equal(v.graves.find(g => g.id === '1').plot, 0, 'own placement uses the own plot');
+    assert.ok(!JSON.stringify(v).includes('carols'), 'other cemeteries stay out');
+    assert.ok(v.graves.every(g => !('cemetery' in g) && !('centralPlot' in g)));
+  }
+
+  // A public repo that turned private drops off the Zentralfriedhof by itself
+  assert.equal(r.cemeteryView([{ ...pub, private: true }], null, 'eve').graves.length, 0);
+  assert.equal(r.mayGoCentral(pub), true);
+  assert.equal(r.mayGoCentral(priv), false);
+});
