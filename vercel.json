@@ -2,11 +2,5 @@
   "regions": [
     "fra1"
   ],
-  "outputDirectory": "public",
-  "crons": [
-    {
-      "path": "/api/cron",
-      "schedule": "0 4 * * *"
-    }
-  ]
+  "outputDirectory": "public"
 }

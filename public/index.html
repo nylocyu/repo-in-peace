@@ -20,13 +20,6 @@
   header h1 { margin: 0 auto 0 0; font-size: 14px; color: #d9d3c0; text-shadow: 2px 2px 0 #000; }
   header a { color: #d9d3c0; }
   #hint { position: fixed; left: 14px; bottom: 10px; color: #a9b3a6; text-shadow: 1px 1px 0 #000; }
-  #log { position: fixed; left: 14px; bottom: 36px; width: min(420px, 60vw); display: flex; flex-direction: column; gap: 2px; pointer-events: none; text-shadow: 1px 1px 0 #000; }
-  #log div { animation: fade 12s forwards; }
-  #log b { color: #f1d27a; font-weight: normal; }
-  @keyframes fade { 80% { opacity: 1 } 100% { opacity: 0 } }
-  #chat { position: fixed; left: 14px; bottom: 36px; }
-  #chat input { font: 20px VT323, monospace; width: min(420px, 80vw); padding: 6px; background: var(--paper); color: var(--ink); border: 3px solid var(--ink); }
-  #banner { position: fixed; top: 56px; left: 14px; max-width: min(420px, calc(100vw - 28px)); background: #000a; border: 2px solid #f1d27a; color: #f1d27a; padding: 6px 12px; font-size: 22px; }
   #cert { position: fixed; right: 14px; top: 64px; width: 320px; max-height: calc(100vh - 84px); overflow: auto; background: var(--paper); color: var(--ink); border: 4px solid var(--ink); box-shadow: 6px 6px 0 #000; padding: 12px 14px; }
   #cert h2 { font-size: 11px; margin: 0 0 8px; letter-spacing: 1px; }
   #cert h3 { margin: 0 0 6px; font-size: 24px; font-weight: normal; word-break: break-all; }
@@ -46,14 +39,10 @@
   dialog fieldset { border: 3px solid var(--ink); margin: 10px 0; padding: 4px 8px; }
   dialog fieldset label { margin: 6px 0; }
   dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 14px 0 0; }
-  #buryWhere { background: #2b211815; padding: 6px; }
-  #buryMsg { min-height: 1.2em; margin: 6px 0 0; }
+  #keyMsg { min-height: 1.2em; margin: 6px 0 0; }
+  #syncStatus { color: #a9b3a6; }
   #toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%); background: #000c; border: 2px solid #d9d3c0; padding: 6px 12px; font-size: 22px; }
-  .btn.on { background: #f1d27a; }
   #notice { position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); max-width: min(440px, calc(100vw - 32px)); background: var(--paper); color: var(--ink); border: 4px solid var(--ink); box-shadow: 8px 8px 0 #000; padding: 14px; text-align: center; }
-  #guestList { list-style: none; padding: 0; margin: 4px 0; }
-  #guestList li { display: flex; justify-content: space-between; align-items: center; margin: 4px 0; }
-  #inviteLink { word-break: break-all; font-size: 16px; }
   #mini { position: fixed; right: 14px; bottom: 10px; width: 150px; height: auto; border: 3px solid var(--ink); box-shadow: 3px 3px 0 #000; cursor: pointer; transition: width .15s; }
   #mini:hover { width: min(300px, 60vw); }
   @media (max-width: 700px) {
@@ -64,54 +53,29 @@
 </style>
 </head>
 <body>
-<canvas id="c" aria-label="Pixel cemetery of buried repos"></canvas>
+<canvas id="c" aria-label="Pixel cemetery of your abandoned repos"></canvas>
 <header>
   <h1 class="px">🪦 Repo in Peace</h1>
-  <nav id="where"></nav>
+  <span id="syncStatus" role="status"></span>
   <span id="me"></span>
-  <button id="setBtn" hidden>⚙️ Settings</button>
-  <button id="buryBtn">⚰️ Bury a repo</button>
 </header>
-<div id="banner" hidden></div>
 <aside id="cert" hidden aria-live="polite"></aside>
-<div id="log" aria-live="polite"></div>
-<form id="chat" hidden><input maxlength="140" placeholder="Say something… (Enter to send, Esc to cancel)" aria-label="Chat message"></form>
-<div id="hint">WASD/arrows or tap: walk · Enter: speak · B: bury · F: pay respects · 1: flower · 2: candle</div>
+<div id="hint">WASD/arrows or tap: walk · F: pay respects · 1: flower · 2: candle</div>
 <div id="toast" hidden role="status"></div>
 <div id="notice" hidden role="status"></div>
-<canvas id="mini" title="Map · gold = your graves · click to walk there" aria-label="Minimap of the cemetery"></canvas>
-<dialog id="bury">
-  <form id="buryForm">
-    <h2 class="px">Bury a repo</h2>
-    <p>Only your own repos. Anything with a commit in the last <span id="deadAfter">90</span> days goes to hospice first.</p>
-    <p id="buryWhere"></p>
-    <label>Repo <select name="repo" required></select></label>
-    <label id="centralWrap"><input type="checkbox" name="central">Also show it on the Central Cemetery (public repos only)</label>
-    <p id="installHint" hidden>Want to include private repos? <a target="_blank" rel="noopener">Grant read-only access to the ones you choose</a>, then reopen this dialog.</p>
-    <fieldset id="privacy" hidden>
-      <legend>🔒 Private repo – only you and the people you invite will see it</legend>
-      <label><input type="checkbox" name="allowAi">Let Claude read the README and recent commits to write the obituary (sent to the Anthropic API, not stored here)</label>
-    </fieldset>
-    <label>Cause of death <select name="cause"><option value="">🎲 Let fate (AI) decide</option></select></label>
-    <p id="buryMsg" role="status"></p>
-    <menu><button type="button" id="buryCancel">Cancel</button><button id="burySubmit">Bury</button></menu>
+<canvas id="mini" title="Map · click to walk there" aria-label="Minimap of the cemetery"></canvas>
+<dialog id="key">
+  <form id="keyForm">
+    <h2 class="px" id="keyTitle">AI epitaphs</h2>
+    <p id="keyIntro"></p>
+    <p>With your own Claude API key, Claude reads the README and recent commits of each repo in your cemetery and writes its obituary and cause of death. That content is sent to the Anthropic API with your key; only the result is stored. Without a key you get the repo description and a random cause.</p>
+    <p id="keyCurrent" hidden></p>
+    <label>Anthropic API key <input name="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…" spellcheck="false"></label>
+    <p id="installHint" hidden>Private repos missing? <a target="_blank" rel="noopener">Grant the app read-only access</a>, then sync again.</p>
+    <p id="keyMsg" role="status"></p>
+    <menu><button type="button" id="keyRemove" class="danger" hidden>Remove key</button><button type="button" id="keySkip">Skip</button><button id="keySave">Save key</button></menu>
   </form>
 </dialog>
-<dialog id="settings">
-  <form method="dialog">
-    <h2 class="px">Your cemetery</h2>
-    <p>Only you and the people you send your invite link can enter. Private repos are shown only here, never on the Central Cemetery.</p>
-    <fieldset><legend>Invite link</legend>
-      <p id="inviteLink"></p>
-      <button type="button" id="inviteNew"></button> <button type="button" id="inviteCopy">📋 Copy</button>
-      <label><input type="checkbox" name="loginRequired">Guests must sign in with GitHub</label>
-      <p id="loginHint"></p>
-    </fieldset>
-    <fieldset><legend>Guests</legend><ul id="guestList"></ul></fieldset>
-    <menu><button>Close</button></menu>
-  </form>
-</dialog>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const cv = $('#c'), ctx = cv.getContext('2d');
@@ -120,13 +84,9 @@ const post = (url, data, method = 'POST') => fetch(url, { method, headers: { 'Co
   .then(async r => ({ ok: r.ok, status: r.status, data: r.status === 204 ? null : await r.json().catch(() => null) }));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-// Which cemetery: /c/<login> = that user's own one, / = the Central Cemetery (CEM = null)
-const CEM_NAME = /^\/c\/([\w-]{1,39})$/.exec(location.pathname)?.[1] || null, CEM = CEM_NAME?.toLowerCase() || null;
-const mineHere = () => !!me.login && CEM === me.login.toLowerCase();
-let info = {}, sb = null, feed = null;
-let me = {}, you = null, room = null, graves = [], plots = [], rows = 4, active = null, pendingTeleport = null, buryPlot = null;
+let me = {}, graves = [], plots = [], rows = 4, active = null;
 const P = { x: 0, y: 0, dir: 'down', moving: false };
-const others = new Map(), bubbles = new Map(), fx = [], keys = new Set();
+const fx = [], keys = new Set();
 let target = null, W = 800, H = 400, ground = null, flies = [];
 
 // ---------- Colors ----------
@@ -139,11 +99,8 @@ const r = (x, y, w, h, c) => { pen.fillStyle = c; pen.fillRect(Math.round(x), Ma
 
 // ---------- Layout: one cemetery, a grid of plots ----------
 const COLS = 12, GX = 44, GY = 50, TOP = 90, PADX = 34;
-let SIGN = 'Walk to an empty plot to bury a repo';
+let SIGN = 'Here rest your unfinished repos';
 const plotPos = i => ({ x: PADX + (i % COLS) * GX + GX / 2, y: TOP + 40 + Math.floor(i / COLS) * GY });
-const TIP_URL = 'https://buy.stripe.com/28E00lehJ1PigXeg7l9k400';
-const BOX = { box: true, x: 0, y: 38 }; // offering box just inside the gate; x set in layout()
-const WAY = { way: true, x: 0, y: 38 }; // signpost on the other side: to your own cemetery / back to the central one
 
 function layout() {
   for (const g of graves) Object.assign(g, plotPos(g.plot));
@@ -155,7 +112,6 @@ function layout() {
     W = nw; H = nh; ground = paintGround();
     flies = Array.from({ length: 40 }, () => ({ x: Math.random() * W, y: TOP + Math.random() * (H - TOP), p: Math.random() * 9 }));
   }
-  BOX.x = W / 2 + 30; WAY.x = W / 2 - 30; // far enough apart that "CENTRAL CEMETERY" and "TIP THE GRAVEDIGGER" do not overlap
 }
 
 function paintGround() {
@@ -219,23 +175,10 @@ function bed(x, y, col) {
   r(x - 7, y - 8, 4, 2, '#ffffff'); r(x - 3, y - 8, 10, 3, col); r(x - 3, y - 8, 10, 1, mix(col, '#ffffff', .3));
   r(x + 12, y - 15, 1, 15, '#9aa0a6'); r(x + 11, y - 15, 3, 3, '#9fd3ff'); r(x + 10, y, 5, 1, '#9aa0a6');
 }
-function emptyPlot(p) {
-  const { x, y } = p, hi = p === active, peg = hi ? '#ffe9a8' : '#5c4c3a';
-  r(x - 8, y - 5, 16, 7, hi ? 'rgba(90,60,30,.55)' : 'rgba(40,28,16,.4)');
+function emptyPlot({ x, y }) {
+  const peg = '#5c4c3a';
+  r(x - 8, y - 5, 16, 7, 'rgba(40,28,16,.4)');
   r(x - 9, y - 6, 1, 2, peg); r(x + 8, y - 6, 1, 2, peg); r(x - 9, y + 2, 1, 2, peg); r(x + 8, y + 2, 1, 2, peg);
-}
-function drawBox(t) {
-  const { x, y } = BOX;
-  r(x - 5, y - 1, 10, 2, 'rgba(0,0,0,.35)'); r(x - 1, y - 6, 3, 6, '#3b2716');                 // shadow, post
-  r(x - 6, y - 14, 12, 8, '#6b4a2b'); r(x - 6, y - 14, 12, 1, '#8a5a34'); r(x + 5, y - 13, 1, 7, '#4a3220');
-  r(x - 6, y - 11, 12, 1, '#2b2b33'); r(x - 2, y - 13, 4, 1, '#0c0c0c'); r(x - 1, y - 9, 2, 2, '#c9a640'); // iron band, coin slot, lock
-  if (BOX === active) { const c = (t / 600) % 1; r(x, y - 15 - Math.round((1 - c) * 6), 1, 2, '#f1d27a'); } // a coin dropping in
-}
-function drawWay() {
-  const { x, y } = WAY, hi = WAY === active;
-  r(x - 4, y - 1, 8, 2, 'rgba(0,0,0,.35)'); r(x - 1, y - 16, 2, 16, '#3b2716');
-  r(x - 9, y - 15, 15, 5, hi ? '#8a5a34' : '#6b4a2b'); r(x - 11, y - 14, 2, 3, hi ? '#8a5a34' : '#6b4a2b'); // plank pointing left
-  r(x - 7, y - 13, 11, 1, '#3b2716');
 }
 const FLOWERS = ['#f48fb1', '#ffe082', '#ffffff', '#ce93d8'];
 function drawGrave(g, t) {
@@ -269,13 +212,6 @@ function drawPlayer(p, t) {
   let x = Math.round(p.x), y = Math.round(p.y);
   r(x - 4, y - 1, 9, 2, 'rgba(0,0,0,.35)');
   const ex = p.dir === 'left' ? -1 : p.dir === 'right' ? 1 : 0;
-  if (p.guest) { // guests haunt the place as ghosts
-    const b = Math.round(Math.sin(t / 400 + (parseInt(p.id, 16) || 0)) * 1.5), c = 'rgba(225,232,255,.82)';
-    r(x - 4, y - 15 + b, 9, 10, c); r(x - 3, y - 16 + b, 7, 1, c);
-    for (let i = 0; i < 3; i++) r(x - 4 + i * 3, y - 5 + b + (Math.sin(t / 180 - i * 2) > 0), 2, 2, c); // tail ripples, no steps
-    if (p.dir !== 'up') { r(x - 2 + ex, y - 12 + b, 1, 2, '#1a1a2e'); r(x + 2 + ex, y - 12 + b, 1, 2, '#1a1a2e'); }
-    return;
-  }
   const skin = '#f0c8a0', hair = '#2a1d14', leg = '#1a1a22';
   // Walk cycle: stand, left step, stand, right step; the body bobs on each step
   const step = p.moving ? Math.floor(t / 110) % 4 : 0, s = step === 1 ? 1 : step === 3 ? -1 : 0;
@@ -295,23 +231,6 @@ function text(s, x, y, size = 5, col = '#e8e6f0') {
   ctx.font = `${size}px "Press Start 2P", monospace`; ctx.textAlign = 'center';
   ctx.fillStyle = '#000'; ctx.fillText(s, x + .6, y + .6); ctx.fillStyle = col; ctx.fillText(s, x, y);
 }
-function wrap(s, n) {
-  const out = [];
-  for (const w of s.split(/\s+/)) {
-    for (const part of w.match(new RegExp(`.{1,${n}}`, 'g')) || []) {
-      if (out.length && (out[out.length - 1] + ' ' + part).length <= n) out[out.length - 1] += ' ' + part; else out.push(part);
-    }
-  }
-  return out.slice(0, 4);
-}
-function bubble(s, x, y) {
-  ctx.font = '4px "Press Start 2P", monospace';
-  const lines = wrap(s, 22), w = Math.ceil(Math.max(...lines.map(l => ctx.measureText(l).width))) + 6, h = lines.length * 6 + 4;
-  const bx = Math.round(x - w / 2), by = Math.round(y - h);
-  r(bx - 1, by - 1, w + 2, h + 2, '#111'); r(bx, by, w, h, '#f4f1e8'); r(x - 1, by + h, 3, 2, '#f4f1e8');
-  ctx.fillStyle = '#111'; ctx.textAlign = 'left';
-  lines.forEach((l, i) => ctx.fillText(l, bx + 3, by + 7 + i * 6));
-}
 function glow(x, y, rad, c) {
   const gr = ctx.createRadialGradient(x, y, 0, x, y, rad);
   gr.addColorStop(0, c); gr.addColorStop(1, 'rgba(0,0,0,0)');
@@ -321,25 +240,23 @@ function glow(x, y, rad, c) {
 // ---------- Game loop ----------
 function blocked(x, y) {
   if (x < 6 || x > W - 6 || y < 22 || y > H - 6) return true;
-  for (const o of [BOX, WAY]) if (Math.abs(x - o.x) < 7 && y > o.y - 6 && y < o.y + 2) return true;
   return graves.some(g => {
     const w = g.status !== 'hospice' && g.tomb === 'mausoleum' ? 17 : 10;
     return Math.abs(x - g.x) < w && y > g.y - 8 && y < g.y + 3;
   });
 }
-// The grave or empty plot you're standing in front of
+// The grave you're standing in front of
 function nearestSpot() {
   let best = null, bd = 1e9;
-  for (const s of [...graves, ...plots, BOX, WAY]) {
+  for (const s of graves) {
     const ddx = P.x - s.x, ddy = P.y - s.y, d = Math.hypot(ddx, ddy);
     if (Math.abs(ddx) < 18 && ddy > -2 && ddy < 26 && d < bd) { bd = d; best = s; }
   }
   return best;
 }
-const key = s => s && (s.box ? 'box' : s.way ? 'way' : s.empty ? 'p' + s.plot : s.id);
-const typing = () => /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName) || $('#bury').open || $('#settings').open;
+const typing = () => /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName) || $('#key').open;
 
-let last = 0, lastSent = 0, sentMoving = false, cam = { x: 0, y: 0, S: 3 };
+let last = 0, cam = { x: 0, y: 0, S: 3 };
 function update(dt, t) {
   let vx = 0, vy = 0;
   if (!typing()) {
@@ -364,14 +281,8 @@ function update(dt, t) {
     if (ox === P.x && oy === P.y) target = null;
     P.dir = Math.abs(vx) > Math.abs(vy) ? (vx < 0 ? 'left' : 'right') : (vy < 0 ? 'up' : 'down');
   }
-  if (you && ((P.moving && t - lastSent > 100) || P.moving !== sentMoving)) {
-    lastSent = t; sentMoving = P.moving;
-    sendMove();
-  }
-  for (const p of others.values()) { p.x += (p.tx - p.x) * .25; p.y += (p.ty - p.y) * .25; }
   const a = nearestSpot();
-  if (key(a) !== key(active)) { active = a; renderCert(); }
-  updateBanner();
+  if (a?.id !== active?.id) { active = a; renderCert(); }
 }
 
 function frame(t) {
@@ -389,16 +300,14 @@ function frame(t) {
   plots.forEach(emptyPlot);
 
   const items = graves.map(g => ({ y: g.y, d: () => drawGrave(g, t) }));
-  items.push({ y: BOX.y, d: () => drawBox(t) }, { y: WAY.y, d: drawWay });
-  for (const p of others.values()) items.push({ y: p.y, d: () => drawPlayer(p, t) });
-  if (you) items.push({ y: P.y, d: () => drawPlayer({ ...P, guest: !me.login, color: '#3a3f6b' }, t) });
+  items.push({ y: P.y, d: () => drawPlayer({ ...P, color: '#3a3f6b' }, t) });
   items.sort((a, b) => a.y - b.y).forEach(i => i.d());
 
   // Night, candlelight, fireflies
   r(cam.x - 1, cam.y - 1, vw + 2, vh + 2, 'rgba(8,10,40,.38)');
   ctx.globalCompositeOperation = 'lighter';
   for (const g of graves) if (g.candles && g.status !== 'hospice') glow(g.x + 6, g.y + 2, 18, 'rgba(255,160,60,.3)');
-  if (you) glow(P.x, P.y - 8, 34, 'rgba(255,220,150,.10)');
+  glow(P.x, P.y - 8, 34, 'rgba(255,220,150,.10)');
   ctx.globalCompositeOperation = 'source-over';
   for (const f of flies) {
     f.p += dt; const a = (Math.sin(f.p * 2) + 1) / 2;
@@ -406,22 +315,13 @@ function frame(t) {
   }
 
   // Labels
-  text(CEM ? `${CEM_NAME.toUpperCase()}'S CEMETERY` : 'REPO IN PEACE', W / 2, 7, 5, '#d9d3c0');
+  text(me.login ? `${me.login.toUpperCase()}'S CEMETERY` : 'REPO IN PEACE', W / 2, 7, 5, '#d9d3c0');
   text(SIGN, W / 2, 79, 4, '#f1e3c4');
-  text('TIP THE GRAVEDIGGER', BOX.x, BOX.y + 8, 3, BOX === active ? '#ffe9a8' : 'rgba(220,220,230,.55)');
-  text(CEM ? 'CENTRAL CEMETERY' : 'MY CEMETERY', WAY.x, WAY.y + 8, 3, WAY === active ? '#ffe9a8' : 'rgba(220,220,230,.55)');
   for (const g of graves) {
     const n = g.name.length > 11 ? g.name.slice(0, 10) + '…' : g.name;
     text(n, g.x, g.y + 13, 3, g === active ? '#ffe9a8' : 'rgba(220,220,230,.55)');
   }
-  if (active?.empty) text(`Plot ${active.plot + 1}`, active.x, active.y + 13, 3, '#ffe9a8');
-  const all = [...others.values()];
-  if (you) all.push({ ...P, id: you, name: me.login || 'You' });
-  for (const p of all) {
-    text(p.name, p.x, p.y - 22, 3, p.id === you ? '#ffe9a8' : '#dfe6ff');
-    const b = bubbles.get(p.id);
-    if (b && t - b.t < 6000) bubble(b.text, p.x, p.y - 27);
-  }
+  if (me.login) text(me.login, P.x, P.y - 22, 3, '#ffe9a8');
   for (let i = fx.length - 1; i >= 0; i--) {
     const f = fx[i], age = t - f.t0;
     if (age > 1600) { fx.splice(i, 1); continue; }
@@ -431,7 +331,7 @@ function frame(t) {
   requestAnimationFrame(frame);
 }
 
-// ---------- Minimap: whole cemetery, your graves in gold ----------
+// ---------- Minimap: whole cemetery, graves in gold ----------
 const mini = $('#mini'), mctx = mini.getContext('2d');
 function drawMini(vw, vh) {
   if (!ground) return;
@@ -441,11 +341,8 @@ function drawMini(vw, vh) {
   mctx.imageSmoothingEnabled = false;
   mctx.drawImage(ground, 0, 0, mini.width, mini.height);
   mctx.fillStyle = 'rgba(8,10,40,.35)'; mctx.fillRect(0, 0, mini.width, mini.height);
-  const mine = g => me.login && me.login.toLowerCase() === g.owner.toLowerCase();
-  for (const g of graves) if (!mine(g)) dot(g.x, g.y - 6, 7, '#8b8f98');
-  for (const g of graves) if (mine(g)) dot(g.x, g.y - 6, 11, '#f1d27a');
-  for (const p of others.values()) dot(p.x, p.y - 6, 6, '#9fb4ff');
-  if (you) dot(P.x, P.y - 6, 8, '#ffffff');
+  for (const g of graves) dot(g.x, g.y - 6, 9, g.status === 'hospice' ? '#9fd3ff' : '#f1d27a');
+  dot(P.x, P.y - 6, 8, '#ffffff');
   mctx.strokeStyle = 'rgba(255,233,168,.5)'; mctx.lineWidth = 2;
   mctx.strokeRect(Math.round(cam.x * k) + .5, Math.round(cam.y * k) + .5, Math.round(vw * k) - 1, Math.round(vh * k) - 1);
 }
@@ -461,38 +358,13 @@ function renderCert() {
   const el = $('#cert'), g = active;
   if (!g) { el.hidden = true; return; }
   el.hidden = false;
-  if (g.box) {
-    el.innerHTML = `<h2 class="px">OFFERING BOX</h2><h3>Tip the gravedigger</h3>
-      <p class="epitaph">Someone has to dig the holes, trim the grass and keep the candles lit. A coin keeps this cemetery open.</p>
-      <div class="acts"><a class="btn" href="${TIP_URL}" target="_blank" rel="noopener">🪙 Tip the gravedigger</a></div>`;
-    return;
-  }
-  if (g.way) {
-    const own = me.login ? `/c/${encodeURIComponent(me.login)}` : null;
-    el.innerHTML = CEM
-      ? `<h2 class="px">SIGNPOST</h2><h3>← Central Cemetery</h3>
-        <p class="epitaph">Where everyone's public repos rest side by side.</p>
-        <div class="acts"><a class="btn" href="/">🌍 Go to the Central Cemetery</a></div>`
-      : `<h2 class="px">SIGNPOST</h2><h3>← ${own ? 'Your own cemetery' : 'Private cemeteries'}</h3>
-        <p class="epitaph">Every gravedigger has a cemetery of their own: all their repos, private ones too, open to whoever they invite.</p>
-        <div class="acts">${own ? `<a class="btn" href="${own}">🏡 Go to my cemetery</a>` : 'Sign in to get yours.'}</div>`;
-    return;
-  }
-  if (g.empty) {
-    const can = !CEM || mineHere();
-    el.innerHTML = `<h2 class="px">EMPTY PLOT</h2><h3>Plot ${g.plot + 1}</h3>
-      <p class="epitaph">Fresh soil, waiting for an unfinished project.</p>
-      <div class="acts">${can ? '<button data-k="bury" title="Bury a repo here (B)">⚰️ Bury a repo here (B)</button>' : `Only ${esc(CEM_NAME)} buries here.`}</div>`;
-    return;
-  }
   const since = days(g.lastCommit, new Date().toISOString());
-  const mine = me.login && me.login.toLowerCase() === g.owner.toLowerCase();
   const head = { dead: 'DEATH CERTIFICATE', zombie: '🧟 GRAVE EMPTY!', hospice: 'HOSPICE FILE' }[g.status];
   const note = g.status === 'zombie' ? `A new commit arrived after the funeral (${fmt(g.lastCommit)}). This repo has risen from the dead.`
     : g.status === 'hospice' ? `Still alive: ${since} days without a commit. Will be buried in ${Math.max(0, me.deadAfter - since)} days.` : '';
   const died = g.status === 'hospice' ? '–' : g.status === 'zombie' ? `buried ${fmt(g.diedAt)}` : fmt(g.lastCommit);
   el.innerHTML = `<h2 class="px">${head}</h2>
-    <h3>${g.url ? `<a href="${esc(g.url)}" target="_blank" rel="noopener">${esc(g.full)}</a>` : esc(g.full)}</h3>
+    <h3><a href="${esc(g.url)}" target="_blank" rel="noopener">${g.private ? '🔒 ' : ''}${esc(g.full)}</a></h3>
     <p class="epitaph">“${esc(g.epitaph)}”</p>
     <dl>
       <dt>Born</dt><dd>${fmt(g.firstCommit)}</dd>
@@ -503,7 +375,6 @@ function renderCert() {
       <dt>Stars</dt><dd>${g.stars}</dd>
       <dt>Cause of death</dt><dd>${esc(g.cause)}</dd>
       <dt>Last words</dt><dd>“${esc(g.lastWords)}”</dd>
-      <dt>Buried by</dt><dd><a href="/c/${encodeURIComponent(g.owner)}">${esc(g.owner)}</a></dd>
       <dt>Plot</dt><dd>${g.plot + 1}</dd>
     </dl>
     ${note ? `<p class="note">${esc(note)}</p>` : ''}
@@ -511,38 +382,19 @@ function renderCert() {
       <button data-k="flower" title="Lay down flowers (1)">🌸 ${g.flowers}</button>
       <button data-k="candle" title="Light a candle (2)">🕯️ ${g.candles}</button>
       <button data-k="f" title="Pay respects (F)">F ${g.respects}</button>
-      ${g.url ? `<a class="btn" href="${esc(g.url)}/fork" target="_blank" rel="noopener" title="Forking = necromancy">🧟 Necromancy (${g.forks} forks)</a>` : ''}
-      ${mine && !g.private ? `<button data-k="central">${g.central ? '↩️ Take off the Central Cemetery' : '🌍 Also show on the Central Cemetery'}</button>` : ''}
-      ${mine ? '<button data-k="remove" class="danger">Remove grave</button>' : ''}
     </div>`;
 }
 $('#cert').addEventListener('click', e => { const k = e.target.closest('button')?.dataset.k; if (k) act(k); });
 
+const TRIBUTE = { flower: ['flowers', '✿'], candle: ['candles', '🕯'], f: ['respects', 'F'] };
 async function act(k) {
-  if (!active) return;
-  if (k === 'bury') return (!CEM || mineHere()) && openBury(active.plot);
-  if (active.empty || active.box || active.way) return;
-  if (k === 'central') {
-    const res = await post(`/api/graves/${active.id}`, { central: !active.central }, 'PATCH');
-    return toast(res.ok ? (active.central ? 'Taken off the Central Cemetery.' : 'Now also resting on the Central Cemetery.') : res.data?.error);
-  }
-  if (k === 'remove') {
-    if (!confirm(`Really dig up the grave of ${active.full}?`)) return;
-    const res = await post(`/api/graves/${active.id}`, {}, 'DELETE');
-    return toast(res.ok ? 'Grave removed.' : res.data?.error);
-  }
-  const res = await post(`/api/graves/${active.id}/respect`, { kind: k, c: CEM });
-  if (!res.ok) toast(res.data?.error);
-}
-
-let bannerText = '';
-function updateBanner() {
-  let s = '';
-  if (active && !active.empty && !active.box && !active.way) {
-    const near = [...others.values(), P].filter(p => Math.hypot(p.x - active.x, p.y - active.y) < 55).length;
-    if (near >= 2) s = `🕯️ Funeral for ${active.name} · ${near} mourners · Enter to speak`;
-  }
-  if (s !== bannerText) { bannerText = s; $('#banner').textContent = s; $('#banner').hidden = !s; }
+  const g = active;
+  if (!g) return;
+  const res = await post(`/api/graves/${g.id}/respect`, { kind: k });
+  if (!res.ok) return toast(res.data?.error);
+  g[TRIBUTE[k][0]]++;
+  fx.push({ x: g.x, y: g.y - 20, s: TRIBUTE[k][1], t0: performance.now() });
+  if (g === active) renderCert();
 }
 
 let toastTimer;
@@ -551,16 +403,7 @@ function toast(s) {
   const el = $('#toast'); el.textContent = s; el.hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 3500);
 }
-function logLine(html) {
-  const d = document.createElement('div'); d.innerHTML = html;
-  const log = $('#log'); log.append(d);
-  while (log.children.length > 6) log.firstChild.remove();
-}
-function teleport(id) {
-  const g = graves.find(x => x.id === id);
-  if (!g) return pendingTeleport = id;
-  pendingTeleport = null; P.x = g.x; P.y = g.y + 14; P.dir = 'up';
-}
+function notice(html) { $('#notice').innerHTML = html; $('#notice').hidden = false; }
 
 // ---------- Input ----------
 addEventListener('keydown', e => {
@@ -568,8 +411,6 @@ addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return; // leave browser shortcuts (Cmd+1 etc.) alone
   const k = e.key.toLowerCase();
   if (e.repeat && !keys.has(k)) return; // holding F must not spam tributes
-  if (k === 'b') return e.preventDefault(), active?.empty && (!CEM || mineHere()) ? act('bury') : openBury(null);
-  if (k === 'enter') { e.preventDefault(); $('#chat').hidden = false; $('#log').style.bottom = '80px'; $('#chat input').focus(); return; }
   if (k === 'f') return act('f');
   if (k === '1') return act('flower');
   if (k === '2') return act('candle');
@@ -580,189 +421,106 @@ addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
 cv.addEventListener('pointerdown', e => {
   const x = cam.x + e.clientX / cam.S, y = cam.y + e.clientY / cam.S;
-  const s = [...graves, ...plots, BOX, WAY].find(g => Math.abs(x - g.x) < 16 && y > g.y - 32 && y < g.y + 12); // tap a grave/plot = stand in front of it
-  target = s ? { x: s.x, y: s.y + 12 } : { x, y };
+  const g = graves.find(g => Math.abs(x - g.x) < 16 && y > g.y - 32 && y < g.y + 12); // tap a grave = stand in front of it
+  target = g ? { x: g.x, y: g.y + 12 } : { x, y };
 });
 
-function closeChat() { $('#chat').hidden = true; $('#log').style.bottom = ''; $('#chat input').value = ''; $('#chat input').blur(); }
-$('#chat').addEventListener('submit', async e => {
-  e.preventDefault();
-  const text = $('#chat input').value.trim();
-  closeChat();
-  if (text) { const res = await post('/api/chat', { text, c: CEM }); if (!res.ok) toast(res.data?.error); }
-});
-$('#chat input').addEventListener('keydown', e => { if (e.key === 'Escape') closeChat(); });
-
-// Burial: from an empty plot (that plot) or from the header button (random free plot)
-function openBury(plot = null) {
-  if (!me.login) return toast('Sign in first – you can only bury your own repos.');
-  buryPlot = plot;
-  $('#buryForm [name=central]').checked = !CEM;
-  $('#buryWhere').textContent = plot == null
-    ? `📍 Spot: a random free plot on ${CEM ? 'your cemetery' : 'the Central Cemetery and on your own'}. Tip: walk to an empty plot to choose your spot.`
-    : CEM ? `📍 Spot: plot ${plot + 1} on your cemetery` : `📍 Spot: plot ${plot + 1} on the Central Cemetery (it also gets a plot on your own)`;
-  $('#buryMsg').textContent = ''; $('#bury').showModal();
-  loadRepos();
+// ---------- Settings: bring your own Claude key ----------
+function openKey(first) {
+  $('#keyTitle').textContent = first ? 'Your cemetery awaits' : 'Settings';
+  $('#keyIntro').textContent = first
+    ? `Every repo without a commit for ${me.hospiceAfter} days gets a hospice bed, after ${me.deadAfter} days a grave. Want Claude to write the epitaphs? You can change this later in ⚙️ Settings.`
+    : '';
+  $('#keyCurrent').hidden = !me.keyHint;
+  $('#keyCurrent').textContent = `Current key: sk-ant-${me.keyHint}`;
+  $('#keyRemove').hidden = !me.keyHint;
+  $('#keySkip').textContent = first ? 'Skip' : 'Close';
+  $('#keyMsg').textContent = '';
+  $('#keyForm').reset();
+  $('#key').showModal();
 }
-async function loadRepos() {
-  const sel = $('#buryForm [name=repo]');
-  sel.replaceChildren(new Option('Loading your repos…', ''));
-  const res = await fetch('/api/repos'), data = await res.json();
-  const repos = res.ok ? data.filter(r => CEM || !r.private) : []; // the Central Cemetery only takes public repos
-  sel.replaceChildren(new Option(!res.ok ? '✋ ' + (data.error || 'Could not load repos')
-    : repos.length ? '– pick a repo –' : CEM ? 'No repos left to bury' : 'No public repos left to bury', ''));
-  for (const r of repos) {
-    const o = new Option(r.private ? `🔒 ${r.full}` : r.full, r.full);
-    o.dataset.private = r.private ? '1' : '';
-    sel.append(o);
+async function saveKey(apiKey) {
+  $('#keySave').disabled = true; $('#keyMsg').textContent = apiKey ? 'Checking the key…' : '';
+  const res = await post('/api/settings', { apiKey });
+  $('#keySave').disabled = false;
+  if (!res.ok) return $('#keyMsg').textContent = '✋ ' + (res.data?.error || 'Something went wrong');
+  const first = !me.aiAsked;
+  me.keyHint = apiKey ? `…${apiKey.slice(-4)}` : null; me.aiAsked = true;
+  $('#key').close();
+  if (apiKey) toast('Key saved. Claude will write the epitaphs.');
+  first ? sync() : apiKey && writeEpitaphs();
+}
+$('#keyForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const k = new FormData(e.target).get('apiKey').trim();
+  if (!k) return $('#keyMsg').textContent = '✋ Enter a key, or skip.';
+  saveKey(k);
+});
+$('#keySkip').onclick = () => me.aiAsked ? $('#key').close() : saveKey(null);
+$('#keyRemove').onclick = () => saveKey(null);
+$('#key').oncancel = e => { if (!me.aiAsked) e.preventDefault(); }; // first visit: Skip or Save, so the sync starts
+
+// ---------- Sync with GitHub ----------
+const setStatus = s => $('#syncStatus').textContent = s;
+async function sync() {
+  $('#syncBtn').disabled = true; setStatus('⏳ Visiting your repos on GitHub…');
+  const res = await post('/api/sync');
+  $('#syncBtn').disabled = false; setStatus(res.ok ? '' : `✋ ${res.data?.error || 'Sync failed'}`);
+  await reload();
+  if (res.ok && !graves.length) toast(`All your repos are alive. None has gone ${me.hospiceAfter} days without a commit.`);
+  if (res.ok) writeEpitaphs();
+}
+// A few graves per request until all have an AI epitaph; stops when nothing moves (e.g. Anthropic keeps failing)
+async function writeEpitaphs() {
+  if (!me.keyHint) return;
+  for (let prev = Infinity; ;) {
+    const res = await post('/api/epitaphs');
+    if (!res.ok || !res.data.left || res.data.left >= prev) break;
+    prev = res.data.left;
+    setStatus(`✍️ Claude is writing epitaphs… ${prev} to go`);
+    await reload();
   }
-  sel.onchange();
+  setStatus('');
+  await reload();
 }
-$('#buryForm [name=repo]').onchange = e => {
-  const priv = !!$('#buryForm [name=repo]').selectedOptions[0]?.dataset.private;
-  $('#privacy').hidden = !priv; $('#centralWrap').hidden = priv || !CEM; // private repos stay on your own cemetery; on the central one it's implied
-  if (priv) $('#buryForm [name=central]').checked = false;
-};
-$('#buryBtn').onclick = () => openBury(null);
-$('#buryCancel').onclick = () => $('#bury').close();
-$('#buryForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const f = new FormData(e.target), btn = $('#burySubmit');
-  btn.disabled = true; $('#buryMsg').textContent = '⚰️ Autopsy in progress… (counting commits, reading the README, writing the obituary)';
-  const res = await post('/api/graves', { repo: f.get('repo'), cause: f.get('cause'), plot: buryPlot, plotIn: CEM ? 'own' : 'central',
-    central: !CEM || f.has('central'), allowAi: f.has('allowAi') });
-  btn.disabled = false;
-  if (!res.ok) return $('#buryMsg').textContent = '✋ ' + (res.data?.error || 'Something went wrong');
-  $('#bury').close(); e.target.reset();
-  const d = res.data, here = CEM ? mineHere() : d.centralPlot != null, plot = (CEM ? d.plot : d.centralPlot) + 1;
-  const where = here ? `plot ${plot}` : `plot ${d.plot + 1} of your cemetery`;
-  toast(d.status === 'hospice' ? `${d.full} was admitted to hospice (${where}).` : `${d.full} was laid to rest in ${where}.`);
-  if (here) { pendingTeleport = d.id; reload(); }
-});
+async function reload() {
+  const res = await fetch('/api/graves'), d = await res.json().catch(() => ({}));
+  if (!res.ok) return notice(`🪦 The cemetery could not be loaded (${esc(d.error || res.status)}). Please try again later.`);
+  const id = active?.id;
+  graves = d.graves; rows = d.rows; layout();
+  active = graves.find(g => g.id === id) || null;
+  renderCert();
+}
 
 // ---------- Start ----------
-function setState(d) {
-  info = d; graves = d.graves; rows = d.rows; layout();
-  active = null; // re-picked (and re-rendered) on the next frame
-  if (pendingTeleport) teleport(pendingTeleport);
-}
-// Load the cemetery (the server checks access) and listen on its channels; rerun on every "graves" ping
-async function reload() {
-  const res = await fetch('/api/graves' + (CEM ? '?c=' + CEM : '')), d = await res.json().catch(() => ({}));
-  if (res.status === 403 && CEM) return location.replace('/?denied=' + encodeURIComponent(CEM_NAME)); // invite-only, or access was taken away
-  if (!res.ok) return notice(`🪦 The cemetery could not be loaded (${esc(d.error || res.status)}). Please try again later.`);
-  if (d.topic !== info.topic) listen(d);
-  setState(d); renderSettings();
-}
-function listen(d) {
-  // Realtime: the cemetery topic is receive-only (server sends chat, tributes, "graves changed"); its name is only
-  // handed out after the access check and changes when access is taken away ("rekey"). Movement + presence go peer-to-peer.
-  if (feed) sb.removeChannel(feed);
-  if (room) sb.removeChannel(room);
-  feed = sb.channel(d.topic, { config: { private: true } })
-    .on('broadcast', { event: 'graves' }, reload)
-    .on('broadcast', { event: 'rekey' }, reload)
-    .on('broadcast', { event: 'chat' }, ({ payload: c }) => {
-      bubbles.set(c.id, { text: c.text, t: performance.now() });
-      logLine(`<b>${esc(c.name)}:</b> ${esc(c.text)}`);
-    })
-    .on('broadcast', { event: 'fx' }, ({ payload: f }) => {
-      const g = graves.find(x => x.id === f.id);
-      if (g) fx.push({ x: g.x, y: g.y - 20, s: { f: 'F', flower: '✿', candle: '🕯' }[f.kind], t0: performance.now() });
-      const what = { f: 'pays respects', flower: 'lays down flowers', candle: 'lights a candle' }[f.kind];
-      logLine(`<b>${esc(f.name)}</b> ${what} · ${esc(g?.name)}`);
-    })
-    .subscribe();
-  others.clear();
-  // ponytail: names in presence are client-claimed (avatar labels only); chat names come from the server
-  room = sb.channel(d.players, { config: { presence: { key: me.pid } } })
-    .on('presence', { event: 'sync' }, () => {
-      const meta = room.presenceState();
-      for (const id of others.keys()) if (!meta[id]) others.delete(id);
-      for (const [id, [m]] of Object.entries(meta)) if (others.has(id)) Object.assign(others.get(id), { name: m.name, guest: m.guest });
-    })
-    .on('presence', { event: 'join' }, ({ key }) => key !== me.pid && sendMove()) // newcomers learn where we stand
-    .on('broadcast', { event: 'move' }, ({ payload: p }) => {
-      const m = room.presenceState()[p.id]?.[0], o = others.get(p.id);
-      if (o) Object.assign(o, { dir: p.dir, moving: p.moving, tx: p.x, ty: p.y });
-      else if (m) others.set(p.id, { id: p.id, name: m.name, guest: m.guest, color: colorOf(p.id), ...p, tx: p.x, ty: p.y });
-    })
-    .subscribe(st => { if (st === 'SUBSCRIBED') room.track({ name: me.name, guest: me.guest }).then(sendMove); });
-}
-
-// ---------- Your cemetery: invite link, sign-in, guests (owner only; the server sends settings only to them) ----------
-function renderSettings() {
-  const st = info.settings;
-  $('#setBtn').hidden = !st;
-  if (!st) return;
-  $('#settings [name=loginRequired]').checked = st.loginRequired;
-  $('#loginHint').textContent = st.loginRequired ? 'Guests sign in once and stay until you remove them.'
-    : 'Anyone with the link can enter, no sign-in needed. Reset the link to lock them out again.';
-  const link = st.inviteToken && `${location.origin}/c/${encodeURIComponent(me.login)}?invite=${st.inviteToken}`;
-  $('#inviteLink').textContent = link || 'No invite link yet.';
-  $('#inviteNew').textContent = link ? '🔄 Reset link (the old one stops working)' : '✉️ Create invite link';
-  $('#inviteCopy').hidden = !link; $('#inviteCopy').onclick = () => navigator.clipboard.writeText(link).then(() => toast('Invite link copied.'));
-  $('#guestList').replaceChildren(...(st.guests.length ? st.guests.map(gu => {
-    const li = document.createElement('li'), b = document.createElement('button');
-    li.textContent = gu; b.textContent = 'Remove'; b.className = 'danger';
-    b.onclick = async () => { const res = await post(`/api/cemetery/guests/${encodeURIComponent(gu)}`, {}, 'DELETE'); res.ok ? reload() : toast(res.data?.error); };
-    li.append(b); return li;
-  }) : [Object.assign(document.createElement('li'), { textContent: 'Nobody yet.' })]));
-}
-$('#setBtn').onclick = () => $('#settings').showModal();
-$('#settings [name=loginRequired]').onchange = async e => {
-  const res = await post('/api/cemetery', { loginRequired: e.target.checked }, 'PATCH');
-  res.ok ? reload() : toast(res.data?.error);
-};
-$('#inviteNew').onclick = async () => {
-  if (info.settings.inviteToken && !confirm('Reset the invite link? The old link stops working; signed-in guests who already joined stay.')) return;
-  const res = await post('/api/cemetery/invite');
-  res.ok ? reload() : toast(res.data?.error);
-};
-
-function notice(html) { $('#notice').innerHTML = html; $('#notice').hidden = false; }
 async function start() {
   me = await (await fetch('/api/me')).json();
-  for (const c of me.causes) $('#buryForm [name=cause]').append(new Option(c, c));
-  $('#deadAfter').textContent = me.deadAfter;
-  if (me.installUrl && CEM) { $('#installHint').hidden = false; $('#installHint a').href = me.installUrl; }
-  const next = encodeURIComponent(location.pathname + location.search); // e.g. back to an invite link
-  const login = me.oauth ? `<a href="/auth/login?next=${next}" class="btn">Sign in with GitHub</a>`
+  if (me.installUrl) { $('#installHint').hidden = false; $('#installHint a').href = me.installUrl; }
+  const login = me.oauth ? '<a href="/auth/login" class="btn">Sign in with GitHub</a>'
     : me.dev ? '<button id="devLogin">Dev login</button>' : '<span>Sign-in not configured</span>';
-  $('#me').innerHTML = me.login ? `🎩 ${esc(me.login)} · <a href="/auth/logout">Sign out</a>` : login;
+  $('#me').innerHTML = me.login
+    ? `<button id="syncBtn" title="Fetch your repos from GitHub again">🔄 Sync</button> <button id="settingsBtn">⚙️ Settings</button> 🎩 ${esc(me.login)} · <a href="/auth/logout">Sign out</a>`
+    : login;
   $('#devLogin')?.addEventListener('click', () => {
     const n = prompt('GitHub username (dev mode only):');
-    if (n) location.href = `/auth/dev?login=${encodeURIComponent(n)}&next=${next}`;
+    if (n) location.href = '/auth/dev?login=' + encodeURIComponent(n);
   });
-  const mineLink = me.login ? `<a class="btn${mineHere() ? ' on' : ''}" href="/c/${encodeURIComponent(me.login)}">🏡 My cemetery</a>` : '';
-  $('#where').innerHTML = `${mineLink} <a class="btn${CEM ? '' : ' on'}" href="/">🌍 Central Cemetery</a>`
-    + (CEM && !mineHere() ? ` <span>· visiting ${esc(CEM_NAME)}</span>` : '');
-  if (CEM && !mineHere()) SIGN = `Here rest the repos of ${CEM_NAME}`;
-
-  const q = new URLSearchParams(location.search);
-  if (q.get('denied')) { toast(`${q.get('denied')}'s cemetery is invite-only. Ask them for an invite link.`); history.replaceState(null, '', '/'); }
-  if (CEM && q.get('invite')) {
-    const res = await post(`/api/cemetery/${CEM}/join`, { token: q.get('invite') });
-    if (res.status === 401) return notice(`✉️ You're invited to ${esc(CEM_NAME)}'s cemetery.<br><br>${me.oauth ? login : 'Sign in above to accept.'}`);
-    toast(res.ok ? (mineHere() ? 'That is your own invite link.' : `Welcome to ${CEM_NAME}'s cemetery!`) : res.data?.error);
-    history.replaceState(null, '', location.pathname);
+  if (!me.login) SIGN = 'Sign in with GitHub to see your cemetery';
+  layout();
+  P.x = W / 2; P.y = 34;
+  if (me.login) {
+    await reload();
+    // Spawn where you left off (per browser). ponytail: localStorage, server-side if it must follow you across devices
+    const spot = `pos:${me.login}`;
+    try { const p = JSON.parse(localStorage.getItem(spot)); if (p && !blocked(p.x, p.y)) Object.assign(P, p); } catch {}
+    const save = () => { try { localStorage.setItem(spot, JSON.stringify({ x: Math.round(P.x), y: Math.round(P.y), dir: P.dir })); } catch {} };
+    addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', () => document.hidden && save());
+    $('#syncBtn').onclick = sync;
+    $('#settingsBtn').onclick = () => openKey(false);
+    me.aiAsked ? sync() : openKey(true);
   }
-
-  sb = supabase.createClient(me.supabase.url, me.supabase.key);
-  await reload();
-  P.x = W / 2; P.y = 34; you = me.pid;
-  // Spawn where you left off (per browser, account and cemetery). ponytail: localStorage, server-side if it must follow you across devices
-  const spot = `pos:${me.login || 'guest'}:${CEM || ''}`;
-  try { const p = JSON.parse(localStorage.getItem(spot)); if (p && !blocked(p.x, p.y)) Object.assign(P, p); } catch {}
-  const save = () => { try { localStorage.setItem(spot, JSON.stringify({ x: Math.round(P.x), y: Math.round(P.y), dir: P.dir })); } catch {} };
-  addEventListener('pagehide', save);
-  document.addEventListener('visibilitychange', () => document.hidden && save());
   requestAnimationFrame(frame);
-}
-const colorOf = id => `hsl(${parseInt(id, 16) % 360} 45% 38%)`;
-function sendMove() {
-  room?.send({ type: 'broadcast', event: 'move', payload: {
-    id: me.pid, x: Math.round(P.x), y: Math.round(P.y), dir: P.dir, moving: P.moving } });
 }
 start();
 </script>
